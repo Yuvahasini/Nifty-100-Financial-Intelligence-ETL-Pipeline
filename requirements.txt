@@ -1,0 +1,27 @@
+# ── Data Engineering & ETL ─────────────────────────────────────────────────
+pandas==2.2.2
+numpy==1.26.4
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+openpyxl==3.1.2
+scipy==1.13.0
+scikit-learn==1.4.2
+matplotlib==3.8.4
+seaborn==0.13.2
+
+# ── Django & REST API ──────────────────────────────────────────────────────
+Django==4.2.13
+djangorestframework==3.15.1
+django-cors-headers==4.3.1
+drf-spectacular==0.27.2
+gunicorn==22.0.0
+
+# ── Celery & Redis ─────────────────────────────────────────────────────────
+celery==5.3.6
+redis==5.0.4
+django-celery-beat==2.6.0
+django-celery-results==2.5.1
+
+# ── Utilities ──────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+requests==2.31.0
