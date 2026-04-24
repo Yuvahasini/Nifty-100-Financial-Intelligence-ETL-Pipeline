@@ -1,0 +1,115 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL data warehouse ───────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: nifty-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       nifty100
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nifty100"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Celery broker + cache) ───────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nifty-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Django web application ──────────────────────────────────────────────
+  web:
+    build: .
+    container_name: nifty-web
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             python manage.py migrate --run-syncdb &&
+             gunicorn nifty100.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: nifty100.settings
+      DJANGO_DEBUG:           "False"
+      DJANGO_SECRET_KEY:      "${DJANGO_SECRET_KEY:-change-me-in-production}"
+      DB_HOST:                postgres
+      DB_PORT:                "5432"
+      DB_NAME:                nifty100
+      DB_USER:                postgres
+      DB_PASSWORD:            postgres
+      CELERY_BROKER_URL:      redis://redis:6379/0
+      CELERY_RESULT_BACKEND:  redis://redis:6379/0
+      REDIS_URL:              redis://redis:6379/1
+      NIFTY_DB_URL:           "postgresql://postgres:postgres@postgres:5432/nifty100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery worker ───────────────────────────────────────────────────────
+  celery_worker:
+    build: .
+    container_name: nifty-celery-worker
+    restart: unless-stopped
+    command: celery -A nifty100 worker --loglevel=info --concurrency=2
+    volumes:
+      - .:/app
+    environment:
+      DJANGO_SETTINGS_MODULE: nifty100.settings
+      DB_HOST:                postgres
+      DB_PORT:                "5432"
+      DB_NAME:                nifty100
+      DB_USER:                postgres
+      DB_PASSWORD:            postgres
+      CELERY_BROKER_URL:      redis://redis:6379/0
+      CELERY_RESULT_BACKEND:  redis://redis:6379/0
+      NIFTY_DB_URL:           "postgresql://postgres:postgres@postgres:5432/nifty100"
+    depends_on:
+      - postgres
+      - redis
+
+  # ── Celery beat (scheduler) ─────────────────────────────────────────────
+  celery_beat:
+    build: .
+    container_name: nifty-celery-beat
+    restart: unless-stopped
+    command: celery -A nifty100 beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    environment:
+      DJANGO_SETTINGS_MODULE: nifty100.settings
+      DB_HOST:                postgres
+      DB_PORT:                "5432"
+      DB_NAME:                nifty100
+      DB_USER:                postgres
+      DB_PASSWORD:            postgres
+      CELERY_BROKER_URL:      redis://redis:6379/0
+      CELERY_RESULT_BACKEND:  redis://redis:6379/0
+      NIFTY_DB_URL:           "postgresql://postgres:postgres@postgres:5432/nifty100"
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  pg_data:
+  static_volume:
