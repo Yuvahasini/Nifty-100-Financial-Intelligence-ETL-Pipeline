@@ -3,6 +3,7 @@ DRF Serializers for the Nifty 100 Intelligence API.
 """
 
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import (
     DimCompany, FactProfitLoss, FactBalanceSheet,
     FactCashFlow, FactAnalysis, FactMlScore, FactProsCons,
