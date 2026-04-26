@@ -181,6 +181,8 @@ def standardise_year(raw: str) -> dict:
         result["year_label"] = label
         result["fiscal_year"] = _fiscal_year(mon, yr)
         result["sort_order"] = _sort_order(mon, yr)
+        if suffix:
+            result["sort_order"] += 1
         return result
 
     # Fallback — leave as-is
