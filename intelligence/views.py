@@ -7,6 +7,7 @@ from rest_framework import generics, filters
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from .models import (
@@ -120,7 +121,9 @@ class AnalysisView(generics.ListAPIView):
     serializer_class = AnalysisSerializer
 
     def get_queryset(self):
-        return FactAnalysis.objects.filter(symbol_id=self.kwargs["symbol"])
+        return (FactAnalysis.objects
+                .filter(symbol_id=self.kwargs["symbol"])
+                .order_by("period"))
 
 
 @extend_schema(summary="Get ML health scores for a company")
@@ -137,7 +140,7 @@ class MlScoreView(generics.ListAPIView):
 # Leaderboard / comparison endpoints
 # ---------------------------------------------------------------------------
 
-@extend_schema(summary="Get top N companies by overall ML health score")
+@extend_schema(summary="Get top N companies by overall ML health score", responses=OpenApiTypes.OBJECT)
 @api_view(["GET"])
 def leaderboard(request):
     n       = int(request.query_params.get("n", 20))
@@ -170,7 +173,7 @@ def leaderboard(request):
     return Response(results)
 
 
-@extend_schema(summary="Sector-wise average health scores")
+@extend_schema(summary="Sector-wise average health scores", responses=OpenApiTypes.OBJECT)
 @api_view(["GET"])
 def sector_summary(request):
     from django.db.models import Avg, Count
@@ -189,7 +192,7 @@ def sector_summary(request):
     return Response(list(data))
 
 
-@extend_schema(summary="Compare two or more companies side-by-side")
+@extend_schema(summary="Compare two or more companies side-by-side", responses=OpenApiTypes.OBJECT)
 @api_view(["GET"])
 def compare_companies(request):
     symbols = request.query_params.getlist("symbol")
