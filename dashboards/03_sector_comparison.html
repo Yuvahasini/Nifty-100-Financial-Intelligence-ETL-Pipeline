@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard 3 — Sector Comparison Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div id="loadingOverlay" style="position:fixed;inset:0;background:rgba(5,7,10,.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div style="width:32px;height:32px;border:3px solid rgba(79,158,255,.2);border-top-color:#4F9EFF;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div id="loadMsg" style="color:#5A6880;font-size:12px;font-family:'DM Mono',monospace">Loading sector data…</div>
+</div>
+<div id="errToast" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none"></div>
+<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}</style>
+
+<nav>
+  <div class="nav-brand">N100·BI</div>
+  <div class="nav-links">
+    <a class="nav-link" href="01_executive_overview.html">① Executive</a>
+    <a class="nav-link" href="02_company_deep_dive.html">② Company</a>
+    <a class="nav-link active" href="03_sector_comparison.html">③ Sectors</a>
+    <a class="nav-link" href="04_health_scorecard.html">④ Health</a>
+    <a class="nav-link" href="05_growth_analytics.html">⑤ Growth</a>
+    <a class="nav-link" href="06_debt_leverage.html">⑥ Debt</a>
+    <a class="nav-link" href="07_dividend_returns.html">⑦ Dividend</a>
+  </div>
+  <div class="nav-right"><span class="live-dot"></span>Sector Analysis</div>
+</nav>
+<div class="tabs">
+  <div class="tab active" onclick="showTab('p1',this)">3.1 Sector vs Sector</div>
+  <div class="tab" onclick="showTab('p2',this)">3.2 Companies Within Sector</div>
+</div>
+
+<!-- PAGE 3.1 -->
+<div id="p1" class="page active">
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Avg Overall Score per Sector</div>
+      <div class="h240"><canvas id="secScoreChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Score Dimensions per Sector (Profitability · Growth · Leverage · Cashflow)</div>
+      <div class="h240"><canvas id="secDimChart"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Company Count by Sector</div>
+      <div class="h200"><canvas id="secCountChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Sector Scorecard</div>
+      <div class="tbl"><table>
+        <thead><tr><th>Sector</th><th>Cos</th><th>Avg Score</th><th>Profitability</th><th>Growth</th><th>Leverage</th><th>Cashflow</th></tr></thead>
+        <tbody id="secScorecardTbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 3.2 -->
+<div id="p2" class="page">
+  <div class="slicer-row">
+    <span class="slicer-label">Sector:</span>
+    <select class="sel" id="secSel" onchange="loadSector(this.value)" style="min-width:200px">
+      <option value="">— select —</option>
+    </select>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Health Score Ranking — <span id="secLabel">—</span></div>
+      <div class="h240"><canvas id="secScoreRankChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Score Breakdown Radar — Top 4 Companies</div>
+      <div class="h240"><canvas id="secRadarChart"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Companies in Selected Sector</div>
+    <div class="tbl"><table>
+      <thead><tr><th>Symbol</th><th>Company</th><th>Score</th><th>Label</th><th>Profitability</th><th>Growth</th><th>Leverage</th><th>Cashflow</th></tr></thead>
+      <tbody id="secCompTbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+const API='http://localhost:8000/api';
+Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
+const CO=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}});
+const C=['#4F9EFF','#2ECC71','#F39C12','#E74C3C','#9B59B6','#1ABC9C','#E67E22','#3498DB','#27AE60','#8E44AD','#F1C40F'];
+
+async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error(p+' '+r.status);return r.json();}
+function showLoad(m){document.getElementById('loadMsg').textContent=m;document.getElementById('loadingOverlay').classList.remove('hidden');}
+function hideLoad(){document.getElementById('loadingOverlay').classList.add('hidden');}
+function showErr(m){const t=document.getElementById('errToast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',5000);}
+
+let SEC_DATA=[], ALL_LB=[], inited={p1:false,p2:false};
+const charts={};function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+async function boot(){
+  showLoad('Fetching sector data…');
+  try{
+    const [sec,lb]=await Promise.all([api('/sector-summary/'),api('/leaderboard/?n=200')]);
+    SEC_DATA=sec.sort((a,b)=>b.avg_overall-a.avg_overall);
+    ALL_LB=lb;
+    // populate sector dropdown
+    const sectors=[...new Set(lb.map(r=>r.sector).filter(Boolean))].sort();
+    const sel=document.getElementById('secSel');
+    sectors.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+    hideLoad(); renderP1(); inited.p1=true;
+  }catch(e){hideLoad();showErr('Cannot reach API. '+e.message);}
+}
+
+function renderP1(){
+  const sec=SEC_DATA;
+  const labels=sec.map(s=>s.symbol__sector||'—');
+
+  dc('secScoreChart');
+  charts.secScoreChart=new Chart(document.getElementById('secScoreChart'),{type:'bar',
+    data:{labels,datasets:[{label:'Avg Score',data:sec.map(s=>Number(s.avg_overall||0).toFixed(1)),
+      backgroundColor:sec.map(s=>Number(s.avg_overall||0)>=60?'rgba(46,204,113,.7)':Number(s.avg_overall||0)>=40?'rgba(79,158,255,.65)':'rgba(243,156,18,.6)'),borderRadius:3}]},
+    options:{...CO(),plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#5A6880',maxRotation:30}},y:{min:0,max:100}}}});
+
+  dc('secDimChart');
+  charts.secDimChart=new Chart(document.getElementById('secDimChart'),{type:'bar',
+    data:{labels,datasets:[
+      {label:'Profitability',data:sec.map(s=>Number(s.avg_profitability||0).toFixed(1)),backgroundColor:'rgba(79,158,255,.6)',borderRadius:2},
+      {label:'Growth',data:sec.map(s=>Number(s.avg_growth||0).toFixed(1)),backgroundColor:'rgba(46,204,113,.6)',borderRadius:2},
+      {label:'Leverage',data:sec.map(s=>Number(s.avg_leverage||0).toFixed(1)),backgroundColor:'rgba(243,156,18,.6)',borderRadius:2},
+      {label:'Cashflow',data:sec.map(s=>Number(s.avg_cashflow||0).toFixed(1)),backgroundColor:'rgba(155,89,182,.6)',borderRadius:2}]},
+    options:{...CO(),scales:{x:{grid:{display:false},ticks:{color:'#5A6880',maxRotation:30}},y:{min:0,max:100}}}});
+
+  dc('secCountChart');
+  charts.secCountChart=new Chart(document.getElementById('secCountChart'),{type:'bar',
+    data:{labels,datasets:[{label:'Companies',data:sec.map(s=>s.company_count||0),backgroundColor:C.slice(0,labels.length),borderRadius:3}]},
+    options:{...CO(),plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#5A6880',maxRotation:30}},y:{min:0}}}});
+
+  const tb=document.getElementById('secScorecardTbody');tb.innerHTML='';
+  sec.forEach(s=>{
+    const sc=Number(s.avg_overall||0);const tc=sc>=60?'tag-g':sc>=40?'tag-a':'tag-w';
+    tb.innerHTML+=`<tr><td>${s.symbol__sector||'—'}</td><td>${s.company_count||'—'}</td>
+      <td><span class="tag ${tc}">${sc.toFixed(1)}</span></td>
+      <td>${Number(s.avg_profitability||0).toFixed(1)}</td>
+      <td>${Number(s.avg_growth||0).toFixed(1)}</td>
+      <td>${Number(s.avg_leverage||0).toFixed(1)}</td>
+      <td>${Number(s.avg_cashflow||0).toFixed(1)}</td></tr>`;});
+}
+
+function loadSector(sec){
+  if(!sec)return;
+  document.getElementById('secLabel').textContent=sec;
+  const cos=ALL_LB.filter(r=>r.sector===sec).sort((a,b)=>b.overall_score-a.overall_score);
+
+  dc('secScoreRankChart');
+  charts.secScoreRankChart=new Chart(document.getElementById('secScoreRankChart'),{type:'bar',indexAxis:'y',
+    data:{labels:cos.map(r=>r.symbol),datasets:[{label:'Health Score',
+      data:cos.map(r=>Number(r.overall_score||0).toFixed(1)),
+      backgroundColor:cos.map(r=>{const s=Number(r.overall_score||0);return s>=60?'rgba(46,204,113,.7)':s>=40?'rgba(79,158,255,.65)':'rgba(243,156,18,.6)';}),
+      borderRadius:3}]},
+    options:{...CO(),plugins:{legend:{display:false}},scales:{x:{min:0,max:100,grid:{color:'rgba(30,40,64,.4)'}},y:{grid:{display:false},ticks:{color:'#5A6880'}}}}});
+
+  const top4=cos.slice(0,4);
+  dc('secRadarChart');
+  charts.secRadarChart=new Chart(document.getElementById('secRadarChart'),{type:'radar',
+    data:{labels:['Profitability','Growth','Leverage','Cashflow'],
+      datasets:top4.map((r,i)=>({label:r.symbol,
+        data:[Number(r.profitability||0),Number(r.growth||0),Number(r.leverage||0),Number(r.cashflow||0)],
+        borderColor:C[i],backgroundColor:C[i].replace('FF','1A'),pointRadius:3,borderWidth:2}))},
+    options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:100,grid:{color:'rgba(30,40,64,.8)'},ticks:{display:false},pointLabels:{color:'#5A6880',font:{size:10}}}},plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}}}});
+
+  const tb=document.getElementById('secCompTbody');tb.innerHTML='';
+  cos.forEach(r=>{
+    const sc=Number(r.overall_score||0);const tc=sc>=60?'tag-g':sc>=40?'tag-a':'tag-w';
+    tb.innerHTML+=`<tr><td class="sym">${r.symbol}</td><td>${r.company_name||'—'}</td>
+      <td style="color:${sc>=60?'#2ECC71':sc>=40?'#4F9EFF':'#F39C12'};font-weight:500">${sc.toFixed(1)}</td>
+      <td><span class="tag ${tc}">${r.health_label||'—'}</span></td>
+      <td>${Number(r.profitability||0).toFixed(1)}</td>
+      <td>${Number(r.growth||0).toFixed(1)}</td>
+      <td>${Number(r.leverage||0).toFixed(1)}</td>
+      <td>${Number(r.cashflow||0).toFixed(1)}</td></tr>`;});
+}
+
+const tabInits={p1:()=>{},p2:()=>{
+  const sel=document.getElementById('secSel');
+  if(sel.options.length>1){sel.selectedIndex=1;loadSector(sel.value);}
+}};
+function showTab(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');el.classList.add('active');
+  if(!inited[id]){tabInits[id]();inited[id]=true;}
+}
+boot();
+</script>
+</body></html>

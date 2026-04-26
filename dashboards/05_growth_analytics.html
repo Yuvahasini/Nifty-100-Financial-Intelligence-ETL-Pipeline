@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard 5 — Growth & Earnings Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div id="loadingOverlay" style="position:fixed;inset:0;background:rgba(5,7,10,.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div style="width:32px;height:32px;border:3px solid rgba(79,158,255,.2);border-top-color:#4F9EFF;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div id="loadMsg" style="color:#5A6880;font-size:12px;font-family:'DM Mono',monospace">Loading growth data…</div>
+</div>
+<div id="errToast" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none"></div>
+<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}</style>
+
+<nav>
+  <div class="nav-brand">N100·BI</div>
+  <div class="nav-links">
+    <a class="nav-link" href="01_executive_overview.html">① Executive</a>
+    <a class="nav-link" href="02_company_deep_dive.html">② Company</a>
+    <a class="nav-link" href="03_sector_comparison.html">③ Sectors</a>
+    <a class="nav-link" href="04_health_scorecard.html">④ Health</a>
+    <a class="nav-link active" href="05_growth_analytics.html">⑤ Growth</a>
+    <a class="nav-link" href="06_debt_leverage.html">⑥ Debt</a>
+    <a class="nav-link" href="07_dividend_returns.html">⑦ Dividend</a>
+  </div>
+  <div class="nav-right"><span class="live-dot"></span>Growth Tracker</div>
+</nav>
+<div class="tabs">
+  <div class="tab active" onclick="showTab('p1',this)">5.1 Revenue & Profit Trend</div>
+  <div class="tab" onclick="showTab('p2',this)">5.2 Company Growth Deep Dive</div>
+  <div class="tab" onclick="showTab('p3',this)">5.3 CAGR Analysis</div>
+</div>
+
+<!-- PAGE 5.1 -->
+<div id="p1" class="page active">
+  <div class="slicer-row">
+    <span class="slicer-label">Company:</span>
+    <select class="sel" id="p1CompSel" onchange="loadP1Company(this.value)" style="min-width:260px">
+      <option value="">— select —</option>
+    </select>
+  </div>
+  <div class="kpi-row g4">
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div><div class="kpi-label">Latest Revenue</div><div class="kpi-val" id="g_rev">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">Latest Net Profit</div><div class="kpi-val pos" id="g_prof">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div><div class="kpi-label">OPM% Latest</div><div class="kpi-val" id="g_opm">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--cyan)"></div><div class="kpi-label">Latest EPS</div><div class="kpi-val" id="g_eps">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Revenue vs Net Profit — Full History (₹ Cr)</div>
+      <div class="h220"><canvas id="revProfChart5"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">OPM% Trend</div>
+      <div class="h220"><canvas id="opmChart5"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">YoY Revenue Growth %</div>
+      <div class="h180"><canvas id="revGrowthChart5"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">YoY Net Profit Growth %</div>
+      <div class="h180"><canvas id="profGrowthChart5"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 5.2 -->
+<div id="p2" class="page">
+  <div class="slicer-row">
+    <span class="slicer-label">Company:</span>
+    <select class="sel" id="p2CompSel" onchange="loadP2Company(this.value)" style="min-width:260px">
+      <option value="">— select —</option>
+    </select>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">EPS Trend</div>
+      <div class="h220"><canvas id="epsChart5"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Dividend Payout % Trend</div>
+      <div class="h220"><canvas id="divChart5"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Net Profit Margin % Trend</div>
+      <div class="h180"><canvas id="npmChart5"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Expense Ratio % Trend (lower = better)</div>
+      <div class="h180"><canvas id="expChart5"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Key Metrics Table</div>
+    <div class="tbl" style="overflow-x:auto"><table>
+      <thead><tr><th>Year</th><th>Revenue (₹Cr)</th><th>Net Profit</th><th>OPM%</th><th>NPM%</th><th>EPS ₹</th><th>Div Payout%</th><th>Int Coverage</th></tr></thead>
+      <tbody id="metricsTable5"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- PAGE 5.3 -->
+<div id="p3" class="page">
+  <div class="slicer-row">
+    <span class="slicer-label">Company:</span>
+    <select class="sel" id="p3CompSel" onchange="loadP3Company(this.value)" style="min-width:260px">
+      <option value="">— select —</option>
+    </select>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Compounded Sales Growth (from Analysis)</div>
+      <div class="h200"><canvas id="salesCagrChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Compounded Profit Growth</div>
+      <div class="h200"><canvas id="profCagrChart"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Stock Price CAGR</div>
+      <div class="h180"><canvas id="stockCagrChart5"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">ROE % by Period</div>
+      <div class="h180"><canvas id="roeCagrChart"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">CAGR Summary Table</div>
+    <div class="tbl"><table>
+      <thead><tr><th>Period</th><th>Sales CAGR%</th><th>Profit CAGR%</th><th>Stock CAGR%</th><th>ROE%</th></tr></thead>
+      <tbody id="cagrTable5"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+const API='http://localhost:8000/api';
+Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
+const CO=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}});
+const C=['#4F9EFF','#2ECC71','#F39C12','#E74C3C','#9B59B6','#1ABC9C'];
+
+async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error(p+' '+r.status);return r.json();}
+function showLoad(m){document.getElementById('loadMsg').textContent=m;document.getElementById('loadingOverlay').classList.remove('hidden');}
+function hideLoad(){document.getElementById('loadingOverlay').classList.add('hidden');}
+function showErr(m){const t=document.getElementById('errToast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',5000);}
+function fmt(n){if(n==null||isNaN(n))return'—';const a=Math.abs(n);if(a>=100000)return'₹'+(n/100000).toFixed(1)+' L Cr';if(a>=1000)return'₹'+(n/1000).toFixed(0)+' K Cr';return'₹'+Number(n).toFixed(0)+' Cr';}
+
+let ALL_COMPANIES=[], inited={p1:false,p2:false,p3:false};
+const charts={};function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+async function boot(){
+  showLoad('Loading company list…');
+  try{
+    const lb=await api('/leaderboard/?n=200');
+    ALL_COMPANIES=lb.sort((a,b)=>a.symbol.localeCompare(b.symbol));
+    ['p1CompSel','p2CompSel','p3CompSel'].forEach(id=>{
+      const sel=document.getElementById(id);
+      ALL_COMPANIES.forEach(r=>{const o=document.createElement('option');o.value=r.symbol;o.textContent=r.symbol+' — '+(r.company_name||r.symbol);sel.appendChild(o);});
+    });
+    hideLoad();
+    if(ALL_COMPANIES.length>0){
+      loadP1Company(ALL_COMPANIES[0].symbol);
+      document.getElementById('p1CompSel').value=ALL_COMPANIES[0].symbol;
+    }
+    inited.p1=true;
+  }catch(e){hideLoad();showErr('Cannot reach API. '+e.message);}
+}
+
+async function loadP1Company(sym){
+  if(!sym)return;showLoad('Loading '+sym+' data…');
+  try{
+    const pl=await api('/companies/'+sym+'/profit-loss/');
+    const rows=Array.isArray(pl)?pl:(pl.results||[]);
+    hideLoad();
+    const labels=rows.map(r=>r.year_label||'');
+    const rev=rows.map(r=>Number(r.sales||0));
+    const prof=rows.map(r=>Number(r.net_profit||0));
+    const opm=rows.map(r=>Number(r.opm_pct||0));
+    const latest=rows[rows.length-1]||{};
+    document.getElementById('g_rev').textContent=fmt(Number(latest.sales||0));
+    document.getElementById('g_prof').textContent=fmt(Number(latest.net_profit||0));
+    document.getElementById('g_opm').textContent=latest.opm_pct!=null?Number(latest.opm_pct).toFixed(1)+'%':'—';
+    document.getElementById('g_eps').textContent=latest.eps!=null?'₹'+Number(latest.eps).toFixed(1):'—';
+    dc('revProfChart5');
+    charts.revProfChart5=new Chart(document.getElementById('revProfChart5'),{type:'bar',
+      data:{labels,datasets:[
+        {label:'Revenue',data:rev,backgroundColor:'rgba(79,158,255,.5)',borderRadius:3,yAxisID:'y'},
+        {label:'Net Profit',data:prof,type:'line',borderColor:'#2ECC71',tension:.4,pointRadius:2,yAxisID:'y1'}]},
+      options:{...CO(),scales:{x:{grid:{color:'rgba(30,40,64,.4)'},ticks:{color:'#5A6880'}},y:{position:'left',grid:{color:'rgba(30,40,64,.4)'},ticks:{color:'#4F9EFF'}},y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#2ECC71'}}}}});
+    dc('opmChart5');
+    charts.opmChart5=new Chart(document.getElementById('opmChart5'),{type:'line',
+      data:{labels,datasets:[{label:'OPM%',data:opm,borderColor:'#F39C12',tension:.4,pointRadius:3,fill:false,borderWidth:2}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    const revGrowth=rows.map((r,i)=>{if(i===0)return null;const p=Number(rows[i-1].sales||0);const c=Number(r.sales||0);return p>0?+((c-p)/p*100).toFixed(1):null;});
+    const profGrowth=rows.map((r,i)=>{if(i===0)return null;const p=Number(rows[i-1].net_profit||0);const c=Number(r.net_profit||0);return p>0?+((c-p)/p*100).toFixed(1):null;});
+    dc('revGrowthChart5');
+    charts.revGrowthChart5=new Chart(document.getElementById('revGrowthChart5'),{type:'bar',
+      data:{labels,datasets:[{label:'Revenue Growth YoY%',data:revGrowth,backgroundColor:revGrowth.map(v=>v==null?'transparent':v>=0?'rgba(46,204,113,.65)':'rgba(231,76,60,.65)'),borderRadius:3}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('profGrowthChart5');
+    charts.profGrowthChart5=new Chart(document.getElementById('profGrowthChart5'),{type:'bar',
+      data:{labels,datasets:[{label:'Profit Growth YoY%',data:profGrowth,backgroundColor:profGrowth.map(v=>v==null?'transparent':v>=0?'rgba(79,158,255,.65)':'rgba(231,76,60,.65)'),borderRadius:3}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+  }catch(e){hideLoad();showErr('Error: '+e.message);}
+}
+
+async function loadP2Company(sym){
+  if(!sym)return;showLoad('Loading '+sym+'…');
+  try{
+    const pl=await api('/companies/'+sym+'/profit-loss/');
+    const rows=Array.isArray(pl)?pl:(pl.results||[]);
+    hideLoad();
+    const labels=rows.map(r=>r.year_label||'');
+    dc('epsChart5');
+    charts.epsChart5=new Chart(document.getElementById('epsChart5'),{type:'bar',
+      data:{labels,datasets:[{label:'EPS ₹',data:rows.map(r=>Number(r.eps||0)),backgroundColor:'rgba(243,156,18,.65)',borderRadius:3}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('divChart5');
+    charts.divChart5=new Chart(document.getElementById('divChart5'),{type:'line',
+      data:{labels,datasets:[{label:'Div Payout%',data:rows.map(r=>Number(r.dividend_payout_pct||0)),borderColor:'#2ECC71',tension:.4,pointRadius:3,fill:false}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('npmChart5');
+    charts.npmChart5=new Chart(document.getElementById('npmChart5'),{type:'line',
+      data:{labels,datasets:[{label:'NPM%',data:rows.map(r=>Number(r.net_profit_margin_pct||0)),borderColor:'#4F9EFF',tension:.4,pointRadius:3,fill:false}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('expChart5');
+    charts.expChart5=new Chart(document.getElementById('expChart5'),{type:'line',
+      data:{labels,datasets:[{label:'Expense Ratio%',data:rows.map(r=>Number(r.expense_ratio_pct||0)),borderColor:'#E74C3C',tension:.4,pointRadius:3,fill:false}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    const tb=document.getElementById('metricsTable5');tb.innerHTML='';
+    rows.forEach(r=>{
+      const np=Number(r.net_profit||0);
+      tb.innerHTML+=`<tr><td>${r.year_label||''}</td><td>${fmt(Number(r.sales||0))}</td>
+        <td class="${np>=0?'pos':'neg'}">${fmt(np)}</td>
+        <td>${r.opm_pct!=null?Number(r.opm_pct).toFixed(1)+'%':'—'}</td>
+        <td>${r.net_profit_margin_pct!=null?Number(r.net_profit_margin_pct).toFixed(1)+'%':'—'}</td>
+        <td>${r.eps!=null?'₹'+Number(r.eps).toFixed(1):'—'}</td>
+        <td>${r.dividend_payout_pct!=null?Number(r.dividend_payout_pct).toFixed(1)+'%':'—'}</td>
+        <td>${r.interest_coverage!=null?Number(r.interest_coverage).toFixed(1)+'x':'—'}</td></tr>`;});
+  }catch(e){hideLoad();showErr('Error: '+e.message);}
+}
+
+async function loadP3Company(sym){
+  if(!sym)return;showLoad('Loading CAGR data…');
+  try{
+    const an=await api('/companies/'+sym+'/analysis/');
+    const rows=Array.isArray(an)?an:(an.results||[]);
+    hideLoad();
+    if(rows.length===0){
+      ['salesCagrChart','profCagrChart','stockCagrChart5','roeCagrChart'].forEach(id=>{
+        const ctx=document.getElementById(id);
+        if(ctx){const p=ctx.parentElement;p.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:11px">No CAGR analysis data for this company.<br>Run etl/04_ml_scores.py to generate it.</div>';}});
+      document.getElementById('cagrTable5').innerHTML='<tr><td colspan="5" style="color:var(--muted);text-align:center">No data</td></tr>';
+      return;
+    }
+    const labels=rows.map(r=>r.period||'');
+    dc('salesCagrChart');
+    charts.salesCagrChart=new Chart(document.getElementById('salesCagrChart'),{type:'bar',
+      data:{labels,datasets:[{label:'Sales CAGR%',data:rows.map(r=>Number(r.compounded_sales_growth_pct||0)),
+        backgroundColor:rows.map(r=>Number(r.compounded_sales_growth_pct||0)>=10?'rgba(46,204,113,.7)':'rgba(79,158,255,.65)'),borderRadius:4}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('profCagrChart');
+    charts.profCagrChart=new Chart(document.getElementById('profCagrChart'),{type:'bar',
+      data:{labels,datasets:[{label:'Profit CAGR%',data:rows.map(r=>Number(r.compounded_profit_growth_pct||0)),
+        backgroundColor:rows.map(r=>Number(r.compounded_profit_growth_pct||0)>=10?'rgba(46,204,113,.7)':'rgba(243,156,18,.65)'),borderRadius:4}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('stockCagrChart5');
+    charts.stockCagrChart5=new Chart(document.getElementById('stockCagrChart5'),{type:'bar',
+      data:{labels,datasets:[{label:'Stock CAGR%',data:rows.map(r=>Number(r.stock_price_cagr_pct||0)),
+        backgroundColor:rows.map(r=>Number(r.stock_price_cagr_pct||0)>=0?'rgba(155,89,182,.7)':'rgba(231,76,60,.65)'),borderRadius:4}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    dc('roeCagrChart');
+    charts.roeCagrChart=new Chart(document.getElementById('roeCagrChart'),{type:'line',
+      data:{labels,datasets:[{label:'ROE%',data:rows.map(r=>Number(r.roe_pct||0)),borderColor:'#1ABC9C',tension:.4,pointRadius:5,pointBackgroundColor:'#1ABC9C',fill:false}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+    const tb=document.getElementById('cagrTable5');tb.innerHTML='';
+    rows.forEach(r=>{
+      const s=Number(r.compounded_sales_growth_pct||0);const p=Number(r.compounded_profit_growth_pct||0);
+      const st=Number(r.stock_price_cagr_pct||0);const roe=Number(r.roe_pct||0);
+      tb.innerHTML+=`<tr><td>${r.period||'—'}</td>
+        <td class="${s>=0?'pos':'neg'}">${s>=0?'+':''}${s.toFixed(1)}%</td>
+        <td class="${p>=0?'pos':'neg'}">${p>=0?'+':''}${p.toFixed(1)}%</td>
+        <td class="${st>=0?'pos':'neg'}">${st>=0?'+':''}${st.toFixed(1)}%</td>
+        <td>${roe.toFixed(1)}%</td></tr>`;});
+  }catch(e){hideLoad();showErr('Error: '+e.message);}
+}
+
+const tabInits={
+  p1:()=>{const s=document.getElementById('p1CompSel');if(s.value)loadP1Company(s.value);},
+  p2:()=>{
+    const p1v=document.getElementById('p1CompSel').value;
+    const s=document.getElementById('p2CompSel');
+    const sym=p1v||(ALL_COMPANIES.length?ALL_COMPANIES[0].symbol:'');
+    if(sym){s.value=sym;loadP2Company(sym);}
+  },
+  p3:()=>{
+    const p1v=document.getElementById('p1CompSel').value;
+    const s=document.getElementById('p3CompSel');
+    const sym=p1v||(ALL_COMPANIES.length?ALL_COMPANIES[0].symbol:'');
+    if(sym){s.value=sym;loadP3Company(sym);}
+  }
+};
+function showTab(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');el.classList.add('active');
+  if(!inited[id]){tabInits[id]();inited[id]=true;}
+}
+boot();
+</script>
+</body></html>

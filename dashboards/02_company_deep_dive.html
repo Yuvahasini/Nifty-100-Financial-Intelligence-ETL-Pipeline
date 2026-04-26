@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard 2 — Company Deep Dive</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+<style>
+.company-bar{display:flex;align-items:center;gap:12px;padding:8px 18px;background:var(--s1);border-bottom:1px solid var(--border);flex-shrink:0}
+.company-name-big{font-family:var(--font-head);font-size:24px;letter-spacing:.04em;line-height:1}
+.company-meta-s{font-size:10px;color:var(--muted);margin-top:1px}
+.health-pill{padding:4px 14px;border-radius:4px;font-family:var(--font-head);font-size:16px;letter-spacing:.06em;flex-shrink:0}
+.gauge-arc{width:120px;height:70px;position:relative;flex-shrink:0}
+.gauge-arc svg{width:100%;height:100%}
+.pc-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pc-item{display:flex;align-items:flex-start;gap:7px;padding:7px 9px;border-radius:4px;font-size:10px;line-height:1.4}
+.pc-pro{background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.18)}
+.pc-con{background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.18)}
+.pc-icon{font-size:12px;flex-shrink:0}
+/* Loading overlay */
+#loadingOverlay{position:fixed;inset:0;background:rgba(10,15,30,.7);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+#loadingOverlay .spinner{width:32px;height:32px;border:3px solid rgba(79,158,255,.2);border-top-color:#4F9EFF;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadingOverlay .msg{color:#5A6880;font-size:12px;font-family:'DM Mono',monospace}
+#loadingOverlay.hidden{display:none}
+/* Error toast */
+#errToast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none}
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="msg" id="loadMsg">Fetching company list…</div>
+</div>
+<div id="errToast"></div>
+
+<nav>
+  <div class="nav-brand">N100·BI</div>
+  <div class="nav-links">
+    <a class="nav-link" href="01_executive_overview.html">① Executive</a>
+    <a class="nav-link active" href="02_company_deep_dive.html">② Company</a>
+    <a class="nav-link" href="03_sector_comparison.html">③ Sectors</a>
+    <a class="nav-link" href="04_health_scorecard.html">④ Health</a>
+    <a class="nav-link" href="05_growth_analytics.html">⑤ Growth</a>
+    <a class="nav-link" href="06_debt_leverage.html">⑥ Debt</a>
+    <a class="nav-link" href="07_dividend_returns.html">⑦ Dividend</a>
+  </div>
+  <div class="nav-right"><span class="live-dot"></span>Live API</div>
+</nav>
+
+<!-- Company selector bar -->
+<div class="company-bar">
+  <select class="sel" id="compSel" onchange="loadCompany(this.value)" style="font-size:12px;padding:6px 12px">
+    <option value="">— Loading companies… —</option>
+  </select>
+  <div style="flex:1">
+    <div class="company-name-big" id="cName">—</div>
+    <div class="company-meta-s" id="cMeta">Select a company above</div>
+  </div>
+  <div class="health-pill" id="hPill" style="background:rgba(90,104,128,.12);color:#5A6880">— · —</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('p1',this)">2.1 Financial Summary</div>
+  <div class="tab" onclick="showTab('p2',this)">2.2 Balance Sheet</div>
+  <div class="tab" onclick="showTab('p3',this)">2.3 Cash Flow</div>
+  <div class="tab" onclick="showTab('p4',this)">2.4 Growth &amp; Returns</div>
+</div>
+
+<!-- 2.1 FINANCIAL SUMMARY -->
+<div id="p1" class="page active">
+  <div class="kpi-row g6">
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div>
+      <div class="kpi-label">Revenue (Latest)</div><div class="kpi-val" id="kRev">—</div><div class="kpi-sub" id="kRevS">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div>
+      <div class="kpi-label">Net Profit</div><div class="kpi-val pos" id="kProf">—</div><div class="kpi-sub" id="kProfS">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div>
+      <div class="kpi-label">OPM%</div><div class="kpi-val" id="kOpm">—</div><div class="kpi-sub">Operating margin</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--cyan)"></div>
+      <div class="kpi-label">EPS</div><div class="kpi-val" id="kEps">—</div><div class="kpi-sub">Latest FY</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--purple)"></div>
+      <div class="kpi-label">ROCE / ROE</div><div class="kpi-val" id="kRR">—</div><div class="kpi-sub">Return ratios</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div>
+      <div class="kpi-label">Div Payout</div><div class="kpi-val" id="kDiv">—</div><div class="kpi-sub" id="kDivS">—</div></div>
+  </div>
+  <div class="chart-row r21">
+    <div class="panel">
+      <div class="panel-title">Revenue vs Net Profit — Historical Trend (₹ Cr)</div>
+      <div class="h200"><canvas id="revProfChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Key Metrics Table</div>
+      <div class="tbl"><table id="metricsTable">
+        <thead><tr><th>Year</th><th>Revenue</th><th>Net Profit</th><th>OPM%</th><th>EPS</th></tr></thead>
+        <tbody id="metricsTbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">OPM% Trend</div><div class="h160"><canvas id="opmTrendChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">EPS Trend</div><div class="h160"><canvas id="epsTrendChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- 2.2 BALANCE SHEET -->
+<div id="p2" class="page">
+  <div class="kpi-row g4">
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div><div class="kpi-label">Total Assets (Latest)</div><div class="kpi-val" id="bs_assets">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--red)"></div><div class="kpi-label">Borrowings</div><div class="kpi-val" id="bs_borrow">—</div><div class="kpi-sub" id="bs_borrowS">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">Reserves</div><div class="kpi-val" id="bs_res">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div><div class="kpi-label">Debt/Equity</div><div class="kpi-val" id="bs_de">—</div><div class="kpi-sub" id="bs_deS">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">Borrowings vs Reserves Trend (₹ Cr)</div><div class="h200"><canvas id="borrowResChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Total Asset Growth (₹ Cr)</div><div class="h200"><canvas id="assetGrowthChart"></canvas></div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">Debt-to-Equity Trend (Ref: 1.0)</div><div class="h180"><canvas id="deChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Net Worth Trend (₹ Cr)</div><div class="h180"><canvas id="netWorthChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- 2.3 CASH FLOW -->
+<div id="p3" class="page">
+  <div class="kpi-row g4">
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">Operating CF (Latest)</div><div class="kpi-val pos" id="cf_ocf">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div><div class="kpi-label">Free Cash Flow</div><div class="kpi-val" id="cf_fcf">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div><div class="kpi-label">Cash Conversion</div><div class="kpi-val" id="cf_ccr">—</div><div class="kpi-sub">OCF / Net Profit</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--red)"></div><div class="kpi-label">Financing CF</div><div class="kpi-val neg" id="cf_fin">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">Cash Flow Waterfall — Op / Inv / Fin (₹ Cr)</div><div class="h220"><canvas id="cfWaterfall"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Free Cash Flow Trend</div><div class="h220"><canvas id="fcfTrend"></canvas></div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">Cash Conversion Ratio (ref: 1.0)</div><div class="h160"><canvas id="ccrChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Operating CF vs Net Profit (₹ Cr)</div><div class="h160"><canvas id="ocfVsProfChart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- 2.4 GROWTH & RETURNS -->
+<div id="p4" class="page">
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">Sales Growth YoY%</div><div class="h200"><canvas id="salesGrowthChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Profit Growth YoY%</div><div class="h200"><canvas id="profGrowthChart"></canvas></div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel"><div class="panel-title">ROE Trend</div><div class="h180"><canvas id="roeChart"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Dividend Payout% Trend</div><div class="h180"><canvas id="divChart"></canvas></div></div>
+  </div>
+</div>
+
+<script>
+/* ── CONFIG ─────────────────────────────────────────────────────────────── */
+const API = 'http://localhost:8000/api';   // ← change if your Django runs elsewhere
+
+Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
+
+/* ── STATE ──────────────────────────────────────────────────────────────── */
+let charts={};
+let inited={p1:false,p2:false,p3:false,p4:false};
+let PL=[], BS=[], CF=[], ML=null;   // raw API data for current company
+
+/* ── HELPERS ────────────────────────────────────────────────────────────── */
+function cr(v){return{responsive:true,maintainAspectRatio:false,
+  plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},
+  scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},
+         y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}}}
+
+function fmt(n){if(n==null||isNaN(n))return'—';const a=Math.abs(n);
+  if(a>=100000)return'₹'+(n/100000).toFixed(1)+' L Cr';
+  if(a>=1000)return'₹'+(n/1000).toFixed(0)+' K';
+  return'₹'+n.toFixed(0)+' Cr';}
+
+function pct(n){return n==null||isNaN(n)?'—':n.toFixed(1)+'%';}
+
+function showLoading(msg){document.getElementById('loadMsg').textContent=msg;
+  document.getElementById('loadingOverlay').classList.remove('hidden');}
+function hideLoading(){document.getElementById('loadingOverlay').classList.add('hidden');}
+
+function showErr(msg){const t=document.getElementById('errToast');
+  t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+
+async function api(path){
+  const r=await fetch(API+path);
+  if(!r.ok)throw new Error(`API ${path} → ${r.status}`);
+  return r.json();}
+
+function destroyAll(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
+
+/* ── BOOT: populate company dropdown ─────────────────────────────────────── */
+async function boot(){
+  showLoading('Fetching company list…');
+  try{
+    let all=[];
+    let url='/companies/?page_size=100';
+    while(url){
+      const data=await api(url.startsWith('http')?url.replace(API,''):url);
+      all=all.concat(data.results||data);
+      // handle pagination
+      url=data.next?(new URL(data.next)).pathname+(new URL(data.next)).search:null;
+    }
+    const sel=document.getElementById('compSel');
+    sel.innerHTML='';
+    all.forEach(c=>{
+      const o=document.createElement('option');
+      o.value=c.symbol;
+      o.textContent=`${c.symbol} — ${c.company_name||c.symbol}`;
+      sel.appendChild(o);});
+    hideLoading();
+    if(all.length>0)loadCompany(all[0].symbol);
+  }catch(e){
+    hideLoading();
+    showErr('Cannot reach API. Is Django running? '+e.message);
+    console.error(e);}}
+
+/* ── LOAD A COMPANY ──────────────────────────────────────────────────────── */
+async function loadCompany(sym){
+  if(!sym)return;
+  destroyAll();
+  inited={p1:false,p2:false,p3:false,p4:false};
+  showLoading('Loading '+sym+'…');
+
+  try{
+    // Fetch all 4 endpoints in parallel
+    const [plData,bsData,cfData,mlData]=await Promise.all([
+      api('/companies/'+sym+'/profit-loss/'),
+      api('/companies/'+sym+'/balance-sheet/'),
+      api('/companies/'+sym+'/cash-flow/'),
+      api('/companies/'+sym+'/ml-score/').catch(()=>null),
+    ]);
+    PL=Array.isArray(plData)?plData:(plData.results||[]);
+    BS=Array.isArray(bsData)?bsData:(bsData.results||[]);
+    CF=Array.isArray(cfData)?cfData:(cfData.results||[]);
+    ML=Array.isArray(mlData)?mlData[mlData.length-1]:mlData;
+
+    // Update header bar - merge roce/roe from company detail into ML
+    const compDetail=await api('/companies/'+sym+'/').catch(()=>null);
+    if(compDetail&&ML){ML.roce_percentage=compDetail.roce_percentage;ML.roe_percentage=compDetail.roe_percentage;}
+    else if(compDetail&&!ML){ML=compDetail;}
+    updateHeader(sym,compDetail,ML);
+
+    hideLoading();
+
+    // Render the currently-visible tab
+    const activePage=document.querySelector('.page.active');
+    if(activePage){renderPage(activePage.id);inited[activePage.id]=true;}
+
+  }catch(e){
+    hideLoading();
+    showErr('Failed to load '+sym+': '+e.message);
+    console.error(e);}}
+
+/* ── UPDATE HEADER BAR ───────────────────────────────────────────────────── */
+function updateHeader(sym,detail,ml){
+  const name=detail?.company_name||sym;
+  const sector=detail?.sector||'';
+  document.getElementById('cName').textContent=name;
+  document.getElementById('cMeta').textContent=
+    [sector?sector+' Sector':'','NSE: '+sym].filter(Boolean).join(' · ');
+
+  const pill=document.getElementById('hPill');
+  if(ml){
+    const lbl=ml.health_label||'—';
+    const score=ml.overall_score!=null?Number(ml.overall_score).toFixed(1):'—';
+    const colors={EXCELLENT:'#2ECC71',GOOD:'#2ECC71',AVERAGE:'#F39C12',WEAK:'#E74C3C',POOR:'#E74C3C'};
+    const bgColors={EXCELLENT:'rgba(46,204,113,.12)',GOOD:'rgba(46,204,113,.12)',
+      AVERAGE:'rgba(243,156,18,.12)',WEAK:'rgba(231,76,60,.12)',POOR:'rgba(231,76,60,.12)'};
+    pill.textContent=lbl+' · '+score;
+    pill.style.color=colors[lbl]||'#5A6880';
+    pill.style.background=bgColors[lbl]||'rgba(90,104,128,.12)';
+  }else{pill.textContent='—';pill.style.color='#5A6880';pill.style.background='rgba(90,104,128,.12)';}
+}
+
+/* ── RENDER PAGES ────────────────────────────────────────────────────────── */
+function renderPage(pid){
+  // ── Correct field names from serializers.py ──
+  // PL:  sales, opm_pct, net_profit, eps, dividend_payout_pct, net_profit_margin_pct, expense_ratio_pct, interest_coverage
+  // BS:  equity_capital, reserves, borrowings, total_assets, debt_to_equity
+  // CF:  operating_activity, investing_activity, financing_activity, free_cash_flow
+  // Company detail: roce_percentage, roe_percentage
+
+  const labels=PL.map(r=>r.year_label||'');
+  const rev=PL.map(r=>Number(r.sales||0));
+  const prof=PL.map(r=>Number(r.net_profit||0));
+  const opm=PL.map(r=>Number(r.opm_pct||0));
+  const eps=PL.map(r=>Number(r.eps||0));
+  const latestPL=PL[PL.length-1]||{};
+  const latestBS=BS[BS.length-1]||{};
+  const latestCF=CF[CF.length-1]||{};
+  const bsLabels=BS.map(r=>r.year_label||'');
+  const cfLabels=CF.map(r=>r.year_label||'');
+
+  if(pid==='p1'){
+    const prevRev=PL.length>1?Number(PL[PL.length-2].sales||0):0;
+    const latestRev=Number(latestPL.sales||0);
+    const revGrowth=prevRev>0?((latestRev-prevRev)/prevRev*100):null;
+    document.getElementById('kRev').textContent=fmt(latestRev);
+    document.getElementById('kRevS').textContent=revGrowth!=null?(revGrowth>=0?'+':'')+revGrowth.toFixed(1)+'% YoY':'';
+    document.getElementById('kProf').textContent=fmt(Number(latestPL.net_profit||0));
+    const npm=Number(latestPL.net_profit_margin_pct||0);
+    document.getElementById('kProfS').textContent=npm?'NPM '+npm.toFixed(1)+'%':'';
+    document.getElementById('kOpm').textContent=latestPL.opm_pct!=null?Number(latestPL.opm_pct).toFixed(1)+'%':'—';
+    document.getElementById('kEps').textContent=latestPL.eps!=null?'₹'+Number(latestPL.eps).toFixed(1):'—';
+    // roce/roe come from company detail endpoint, stored in ML
+    const roce=ML?.roce_percentage!=null?Number(ML.roce_percentage):null;
+    const roe=ML?.roe_percentage!=null?Number(ML.roe_percentage):null;
+    document.getElementById('kRR').textContent=(roce!=null?roce.toFixed(1)+'%':'—')+' / '+(roe!=null?roe.toFixed(1)+'%':'—');
+    document.getElementById('kDiv').textContent=latestPL.dividend_payout_pct!=null?Number(latestPL.dividend_payout_pct).toFixed(0)+'%':'—';
+    document.getElementById('kDivS').textContent='';
+
+    // Metrics table
+    const tb=document.getElementById('metricsTbody');tb.innerHTML='';
+    PL.slice(-7).forEach(r=>{
+      const np=Number(r.net_profit||0);
+      tb.innerHTML+=`<tr><td>${r.year_label||''}</td><td>${fmt(Number(r.sales||0))}</td>
+        <td class="${np>=0?'pos':'neg'}">${fmt(np)}</td>
+        <td>${r.opm_pct!=null?Number(r.opm_pct).toFixed(1)+'%':'—'}</td>
+        <td>${r.eps!=null?'₹'+Number(r.eps).toFixed(1):'—'}</td></tr>`;});
+
+    // Charts — data is now correctly mapped
+    charts.rp=new Chart(document.getElementById('revProfChart'),{type:'bar',
+      data:{labels,datasets:[
+        {label:'Revenue (Sales)',data:rev,backgroundColor:'rgba(79,158,255,.5)',borderRadius:3,yAxisID:'y'},
+        {label:'Net Profit',data:prof,type:'line',borderColor:'#2ECC71',tension:.4,pointRadius:2,yAxisID:'y1'}]},
+      options:{...cr(),scales:{x:{grid:{color:'rgba(30,40,64,.4)'},ticks:{color:'#5A6880'}},
+        y:{position:'left',grid:{color:'rgba(30,40,64,.4)'},ticks:{color:'#4F9EFF'}},
+        y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#2ECC71'}}}}});
+
+    charts.opm=new Chart(document.getElementById('opmTrendChart'),{type:'line',
+      data:{labels,datasets:[{label:'OPM%',data:opm,borderColor:'#4F9EFF',tension:.4,pointRadius:3,borderWidth:2}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+
+    charts.eps=new Chart(document.getElementById('epsTrendChart'),{type:'bar',
+      data:{labels,datasets:[{label:'EPS ₹',data:eps,backgroundColor:'rgba(243,156,18,.6)',borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+  }
+
+  if(pid==='p2'){
+    // Correct BS fields: equity_capital, reserves, borrowings, total_assets, debt_to_equity
+    const assets=BS.map(r=>Number(r.total_assets||0));
+    const borrow=BS.map(r=>Number(r.borrowings||0));
+    const reserves=BS.map(r=>Number(r.reserves||0));
+    const netWorth=BS.map(r=>Number(r.reserves||0)+Number(r.equity_capital||0));
+    const de=BS.map(r=>Number(r.debt_to_equity||0));
+
+    const latestBorrow=Number(latestBS.borrowings||0);
+    const latestRes=Number(latestBS.reserves||0);
+    const latestDE=Number(latestBS.debt_to_equity||0);
+
+    document.getElementById('bs_assets').textContent=fmt(Number(latestBS.total_assets||0));
+    document.getElementById('bs_borrow').textContent=fmt(latestBorrow);
+    document.getElementById('bs_borrowS').textContent=latestBorrow===0?'Debt Free':'D/E: '+latestDE.toFixed(2);
+    document.getElementById('bs_res').textContent=fmt(latestRes);
+    document.getElementById('bs_de').textContent=latestDE.toFixed(2);
+    document.getElementById('bs_deS').textContent=latestBorrow===0?'Debt Free':latestDE<1?'Low leverage':'High leverage';
+
+    charts.br=new Chart(document.getElementById('borrowResChart'),{type:'line',
+      data:{labels:bsLabels,datasets:[
+        {label:'Reserves',data:reserves,borderColor:'#2ECC71',backgroundColor:'rgba(46,204,113,.08)',fill:true,tension:.4,pointRadius:2},
+        {label:'Borrowings',data:borrow,borderColor:'#E74C3C',backgroundColor:'rgba(231,76,60,.08)',fill:true,tension:.4,pointRadius:2}]},
+      options:{...cr()}});
+
+    charts.ag=new Chart(document.getElementById('assetGrowthChart'),{type:'bar',
+      data:{labels:bsLabels,datasets:[{label:'Total Assets',data:assets,backgroundColor:'rgba(79,158,255,.5)',borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+
+    charts.de=new Chart(document.getElementById('deChart'),{type:'line',
+      data:{labels:bsLabels,datasets:[
+        {label:'D/E Ratio',data:de,borderColor:'#E74C3C',tension:.4,pointRadius:3,pointBackgroundColor:'#E74C3C'},
+        {label:'Safe Limit (1.0)',data:Array(bsLabels.length).fill(1),borderColor:'#5A6880',borderDash:[4,4],borderWidth:1,pointRadius:0}]},
+      options:{...cr()}});
+
+    charts.nw=new Chart(document.getElementById('netWorthChart'),{type:'bar',
+      data:{labels:bsLabels,datasets:[{label:'Net Worth',data:netWorth,backgroundColor:'rgba(46,204,113,.5)',borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+  }
+
+  if(pid==='p3'){
+    // Correct CF fields: operating_activity, investing_activity, financing_activity, free_cash_flow
+    const ocf=CF.map(r=>Number(r.operating_activity||0));
+    const icf=CF.map(r=>Number(r.investing_activity||0));
+    const fcfArr=CF.map(r=>Number(r.financing_activity||0));
+    const fcf=CF.map(r=>Number(r.free_cash_flow||0));
+    const profForCF=PL.slice(-CF.length).map(r=>Number(r.net_profit||0));
+
+    const latestOCF=Number(latestCF.operating_activity||0);
+    const latestProf=Number(latestPL.net_profit)||1;
+    document.getElementById('cf_ocf').textContent=fmt(latestOCF);
+    document.getElementById('cf_fcf').textContent=fmt(Number(latestCF.free_cash_flow||0));
+    document.getElementById('cf_ccr').textContent=latestProf?(latestOCF/latestProf).toFixed(2)+'x':'—';
+    document.getElementById('cf_fin').textContent=fmt(Number(latestCF.financing_activity||0));
+
+    charts.cfw=new Chart(document.getElementById('cfWaterfall'),{type:'bar',
+      data:{labels:cfLabels,datasets:[
+        {label:'Operating CF',data:ocf,backgroundColor:'rgba(46,204,113,.65)',borderRadius:3},
+        {label:'Investing CF',data:icf,backgroundColor:'rgba(231,76,60,.5)',borderRadius:3},
+        {label:'Financing CF',data:fcfArr,backgroundColor:'rgba(243,156,18,.5)',borderRadius:3}]},
+      options:{...cr()}});
+
+    charts.fcf=new Chart(document.getElementById('fcfTrend'),{type:'line',
+      data:{labels:cfLabels,datasets:[{label:'Free Cash Flow',data:fcf,
+        borderColor:'#4F9EFF',fill:true,tension:.4,pointRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+
+    charts.ccr=new Chart(document.getElementById('ccrChart'),{type:'line',
+      data:{labels:cfLabels,datasets:[
+        {label:'Cash Conversion',data:ocf.map((o,i)=>profForCF[i]?+(o/profForCF[i]).toFixed(2):0),
+          borderColor:'#4F9EFF',tension:.4,pointRadius:3,pointBackgroundColor:'#4F9EFF'},
+        {label:'Ref: 1.0',data:Array(cfLabels.length).fill(1),borderColor:'#5A6880',borderDash:[4,4],borderWidth:1,pointRadius:0}]},
+      options:{...cr()}});
+
+    charts.op=new Chart(document.getElementById('ocfVsProfChart'),{type:'line',
+      data:{labels:cfLabels,datasets:[
+        {label:'Operating CF',data:ocf,borderColor:'#2ECC71',tension:.4,pointRadius:2},
+        {label:'Net Profit',data:profForCF,borderColor:'#4F9EFF',tension:.4,borderDash:[4,4],pointRadius:2}]},
+      options:{...cr()}});
+  }
+
+  if(pid==='p4'){
+    const salesGrowth=PL.map((r,i)=>{
+      if(i===0)return null;
+      const prev=Number(PL[i-1].sales||0);
+      const cur=Number(r.sales||0);
+      return prev>0?+((cur-prev)/prev*100).toFixed(1):null;});
+    const profGrowth=PL.map((r,i)=>{
+      if(i===0)return null;
+      const prev=Number(PL[i-1].net_profit||0);const cur=Number(r.net_profit||0);
+      return prev>0?+((cur-prev)/prev*100).toFixed(1):null;});
+    // roe/roce come from company detail, use net_profit_margin as proxy if not available
+    const roe=PL.map(r=>r.net_profit_margin_pct!=null?Number(r.net_profit_margin_pct):null);
+    const div=PL.map(r=>r.dividend_payout_pct!=null?Number(r.dividend_payout_pct):null);
+
+    charts.sg=new Chart(document.getElementById('salesGrowthChart'),{type:'bar',
+      data:{labels,datasets:[{label:'Sales Growth YoY%',data:salesGrowth,
+        backgroundColor:salesGrowth.map(v=>v==null?'transparent':v>=0?'rgba(46,204,113,.65)':'rgba(231,76,60,.65)'),borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+
+    charts.pg=new Chart(document.getElementById('profGrowthChart'),{type:'bar',
+      data:{labels,datasets:[{label:'Profit Growth YoY%',data:profGrowth,
+        backgroundColor:profGrowth.map(v=>v==null?'transparent':v>=0?'rgba(79,158,255,.65)':'rgba(231,76,60,.65)'),borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+
+    charts.roe=new Chart(document.getElementById('roeChart'),{type:'line',
+      data:{labels,datasets:[{label:'ROE%',data:roe,borderColor:'#4F9EFF',tension:.4,pointRadius:3}]},
+      options:{...cr()}});
+
+    charts.div=new Chart(document.getElementById('divChart'),{type:'bar',
+      data:{labels,datasets:[{label:'Dividend Payout%',data:div,backgroundColor:'rgba(243,156,18,.6)',borderRadius:3}]},
+      options:{...cr(),plugins:{legend:{display:false}}}});
+  }
+}
+
+/* ── TAB SWITCHING ───────────────────────────────────────────────────────── */
+function showTab(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');el.classList.add('active');
+  if(!inited[id]&&PL.length>0){inited[id]=true;renderPage(id);}
+}
+
+/* ── INIT ────────────────────────────────────────────────────────────────── */
+boot();
+</script>
+</body>
+</html>

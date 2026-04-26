@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard 4 — Financial Health Scorecard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div id="loadingOverlay" style="position:fixed;inset:0;background:rgba(5,7,10,.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div style="width:32px;height:32px;border:3px solid rgba(79,158,255,.2);border-top-color:#4F9EFF;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div id="loadMsg" style="color:#5A6880;font-size:12px;font-family:'DM Mono',monospace">Loading health scores…</div>
+</div>
+<div id="errToast" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none"></div>
+<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}</style>
+
+<nav>
+  <div class="nav-brand">N100·BI</div>
+  <div class="nav-links">
+    <a class="nav-link" href="01_executive_overview.html">① Executive</a>
+    <a class="nav-link" href="02_company_deep_dive.html">② Company</a>
+    <a class="nav-link" href="03_sector_comparison.html">③ Sectors</a>
+    <a class="nav-link active" href="04_health_scorecard.html">④ Health</a>
+    <a class="nav-link" href="05_growth_analytics.html">⑤ Growth</a>
+    <a class="nav-link" href="06_debt_leverage.html">⑥ Debt</a>
+    <a class="nav-link" href="07_dividend_returns.html">⑦ Dividend</a>
+  </div>
+  <div class="nav-right"><span class="live-dot"></span>ML Scoring</div>
+</nav>
+<div class="tabs">
+  <div class="tab active" onclick="showTab('p1',this)">4.1 Health Leaderboard</div>
+  <div class="tab" onclick="showTab('p2',this)">4.2 Scorecard Breakdown</div>
+</div>
+
+<!-- PAGE 4.1 -->
+<div id="p1" class="page active">
+  <div class="slicer-row">
+    <span class="slicer-label">Filter by Label:</span>
+    <span class="chip on" onclick="setFilter('ALL',this)">ALL</span>
+    <span class="chip" onclick="setFilter('EXCELLENT',this)">EXCELLENT</span>
+    <span class="chip" onclick="setFilter('GOOD',this)">GOOD</span>
+    <span class="chip" onclick="setFilter('AVERAGE',this)">AVERAGE</span>
+    <span class="chip" onclick="setFilter('WEAK',this)">WEAK</span>
+    <span class="chip" onclick="setFilter('POOR',this)">POOR</span>
+    <span class="slicer-label" style="margin-left:12px">Sector:</span>
+    <select class="sel" id="secFilter" onchange="applyFilters()"><option value="">All Sectors</option></select>
+  </div>
+  <div class="kpi-row g5">
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">EXCELLENT/GOOD</div><div class="kpi-val lg" style="color:var(--green)" id="kGood">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div><div class="kpi-label">AVERAGE</div><div class="kpi-val lg" id="kAvg">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div><div class="kpi-label">WEAK/POOR</div><div class="kpi-val lg" style="color:var(--amber)" id="kWeak">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--cyan)"></div><div class="kpi-label">Avg Score</div><div class="kpi-val lg" id="kAvgScore">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">Top Scorer</div><div class="kpi-val lg" style="color:var(--green)" id="kTop">—</div><div class="kpi-sub" id="kTopSub">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Score Distribution (bins of 10)</div>
+      <div class="h200"><canvas id="histChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Health Label Distribution</div>
+      <div class="h200"><canvas id="labelDonut"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Full Leaderboard</div>
+    <div class="tbl" style="max-height:260px;overflow-y:auto"><table>
+      <thead><tr><th>#</th><th>Symbol</th><th>Company</th><th>Sector</th><th>Score</th><th>Label</th><th>Profitability</th><th>Growth</th><th>Leverage</th><th>Cashflow</th><th>Dividend</th></tr></thead>
+      <tbody id="lbTbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- PAGE 4.2 -->
+<div id="p2" class="page">
+  <div class="slicer-row">
+    <span class="slicer-label">Company:</span>
+    <select class="sel" id="compSel4" onchange="loadCompany4(this.value)" style="min-width:280px">
+      <option value="">— select company —</option>
+    </select>
+  </div>
+  <div class="kpi-row g4">
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div><div class="kpi-label">Overall Score</div><div class="kpi-val lg" id="c4_score">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div><div class="kpi-label">Health Label</div><div class="kpi-val" id="c4_label">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div><div class="kpi-label">Sector</div><div class="kpi-val" id="c4_sector">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--cyan)"></div><div class="kpi-label">Dividend Score</div><div class="kpi-val" id="c4_div">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Score Breakdown Radar — 6 Dimensions</div>
+      <div class="h260"><canvas id="radarChart4"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">vs Sector Peers</div>
+      <div class="h260"><canvas id="peerChart4"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Pros — Strengths</div>
+      <div id="prosDiv" style="padding:8px"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Cons — Weaknesses</div>
+      <div id="consDiv" style="padding:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API='http://localhost:8000/api';
+Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
+const CO=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}});
+const C=['#4F9EFF','#2ECC71','#F39C12','#E74C3C','#9B59B6','#1ABC9C','#E67E22','#3498DB'];
+
+async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error(p+' '+r.status);return r.json();}
+function showLoad(m){document.getElementById('loadMsg').textContent=m;document.getElementById('loadingOverlay').classList.remove('hidden');}
+function hideLoad(){document.getElementById('loadingOverlay').classList.add('hidden');}
+function showErr(m){const t=document.getElementById('errToast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',5000);}
+
+let ALL_LB=[], activeLabel='ALL', inited={p1:false,p2:false};
+const charts={};function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+async function boot(){
+  showLoad('Fetching health scores…');
+  try{
+    ALL_LB=await api('/leaderboard/?n=200');
+    // populate dropdowns
+    const sectors=[...new Set(ALL_LB.map(r=>r.sector).filter(Boolean))].sort();
+    const sf=document.getElementById('secFilter');
+    sectors.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sf.appendChild(o);});
+    const sel=document.getElementById('compSel4');
+    [...ALL_LB].sort((a,b)=>a.symbol.localeCompare(b.symbol)).forEach(r=>{
+      const o=document.createElement('option');o.value=r.symbol;o.textContent=r.symbol+' — '+(r.company_name||r.symbol);sel.appendChild(o);});
+    hideLoad(); applyFilters(); inited.p1=true;
+  }catch(e){hideLoad();showErr('Cannot reach API. '+e.message);}
+}
+
+function setFilter(lbl,el){
+  document.querySelectorAll('.slicer-row .chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on'); activeLabel=lbl; applyFilters();
+}
+
+function applyFilters(){
+  const sec=document.getElementById('secFilter').value;
+  let lb=ALL_LB;
+  if(activeLabel!=='ALL')lb=lb.filter(r=>r.health_label===activeLabel);
+  if(sec)lb=lb.filter(r=>r.sector===sec);
+  renderP1(lb);
+}
+
+function renderP1(lb){
+  const sorted=[...lb].sort((a,b)=>b.overall_score-a.overall_score);
+  const good=lb.filter(r=>r.health_label==='EXCELLENT'||r.health_label==='GOOD').length;
+  const avg=lb.filter(r=>r.health_label==='AVERAGE').length;
+  const weak=lb.filter(r=>r.health_label==='WEAK'||r.health_label==='POOR').length;
+  const scores=lb.map(r=>Number(r.overall_score||0));
+  const avgSc=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+  const top=sorted[0]||{};
+  document.getElementById('kGood').textContent=good;
+  document.getElementById('kAvg').textContent=avg;
+  document.getElementById('kWeak').textContent=weak;
+  document.getElementById('kAvgScore').textContent=avgSc.toFixed(1);
+  document.getElementById('kTop').textContent=top.symbol||'—';
+  document.getElementById('kTopSub').textContent=top.overall_score?Number(top.overall_score).toFixed(1):''
+
+  // Histogram
+  const bins=[0,10,20,30,40,50,60,70,80,90];
+  const binsLabels=['0–10','10–20','20–30','30–40','40–50','50–60','60–70','70–80','80–90','90–100'];
+  const binCounts=bins.map((lo,i)=>{const hi=lo+10;return scores.filter(s=>s>=lo&&s<(i===9?101:hi)).length;});
+  dc('histChart');
+  charts.histChart=new Chart(document.getElementById('histChart'),{type:'bar',
+    data:{labels:binsLabels,datasets:[{label:'Companies',data:binCounts,
+      backgroundColor:binsLabels.map((_,i)=>i>=6?'rgba(46,204,113,.7)':i>=4?'rgba(79,158,255,.65)':i>=3?'rgba(243,156,18,.6)':'rgba(231,76,60,.6)'),borderRadius:4}]},
+    options:{...CO(),plugins:{legend:{display:false}}}});
+
+  // Label donut
+  const labelCounts={EXCELLENT:0,GOOD:0,AVERAGE:0,WEAK:0,POOR:0};
+  lb.forEach(r=>{if(r.health_label&&labelCounts[r.health_label]!==undefined)labelCounts[r.health_label]++;});
+  const lKeys=Object.keys(labelCounts).filter(k=>labelCounts[k]>0);
+  dc('labelDonut');
+  charts.labelDonut=new Chart(document.getElementById('labelDonut'),{type:'doughnut',
+    data:{labels:lKeys.map(k=>k+' ('+labelCounts[k]+')'),
+      datasets:[{data:lKeys.map(k=>labelCounts[k]),backgroundColor:lKeys.map(k=>k==='EXCELLENT'||k==='GOOD'?'#2ECC71':k==='AVERAGE'?'#4F9EFF':k==='WEAK'?'#F39C12':'#E74C3C'),borderWidth:0,hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'bottom',labels:{padding:10,color:'#5A6880',boxWidth:10}}}}});
+
+  // Table
+  const tb=document.getElementById('lbTbody');tb.innerHTML='';
+  sorted.forEach((r,i)=>{
+    const sc=Number(r.overall_score||0);const col=sc>=60?'#2ECC71':sc>=40?'#4F9EFF':'#F39C12';
+    const tc=sc>=60?'tag-g':sc>=40?'tag-a':'tag-w';
+    tb.innerHTML+=`<tr><td style="color:var(--muted)">${i+1}</td><td class="sym">${r.symbol}</td>
+      <td>${r.company_name||'—'}</td><td>${r.sector||'—'}</td>
+      <td style="color:${col};font-weight:500">${sc.toFixed(1)}</td>
+      <td><span class="tag ${tc}">${r.health_label||'—'}</span></td>
+      <td>${Number(r.profitability||0).toFixed(0)}</td>
+      <td>${Number(r.growth||0).toFixed(0)}</td>
+      <td>${Number(r.leverage||0).toFixed(0)}</td>
+      <td>${Number(r.cashflow||0).toFixed(0)}</td>
+      <td>${r.dividend!=null?Number(r.dividend).toFixed(0):'—'}</td></tr>`;});
+}
+
+async function loadCompany4(sym){
+  if(!sym)return;
+  showLoad('Loading '+sym+' scorecard…');
+  try{
+    const [ml,detail,proscons]=await Promise.all([
+      api('/companies/'+sym+'/ml-score/'),
+      api('/companies/'+sym+'/'),
+      fetch(API+'/companies/'+sym+'/full/').then(r=>r.json()).catch(()=>null),
+    ]);
+    const score=Array.isArray(ml)?ml[ml.length-1]:ml;
+    hideLoad();
+
+    document.getElementById('c4_score').textContent=score?Number(score.overall_score||0).toFixed(1):'—';
+    document.getElementById('c4_label').innerHTML=score?`<span style="color:${score.health_label==='GOOD'||score.health_label==='EXCELLENT'?'#2ECC71':score.health_label==='WEAK'||score.health_label==='POOR'?'#E74C3C':'#F39C12'}">${score.health_label}</span>`:'—';
+    document.getElementById('c4_sector').textContent=detail?.sector||'—';
+    document.getElementById('c4_div').textContent=score&&score.dividend_score!=null?Number(score.dividend_score).toFixed(1):'—';
+
+    // Radar
+    dc('radarChart4');
+    if(score){
+      charts.radarChart4=new Chart(document.getElementById('radarChart4'),{type:'radar',
+        data:{labels:['Profitability','Growth','Leverage','Cashflow','Dividend','Trend'],
+          datasets:[{label:sym,
+            data:[score.profitability_score,score.growth_score,score.leverage_score,score.cashflow_score,score.dividend_score||0,score.trend_score||0].map(v=>Number(v||0)),
+            borderColor:'#4F9EFF',backgroundColor:'rgba(79,158,255,.1)',pointBackgroundColor:'#4F9EFF',pointRadius:4,borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:100,grid:{color:'rgba(30,40,64,.8)'},ticks:{display:false},pointLabels:{color:'#5A6880',font:{size:10}}}},plugins:{legend:{display:false}}}});
+    }
+
+    // Peer chart
+    const peers=ALL_LB.filter(r=>r.sector===detail?.sector).sort((a,b)=>b.overall_score-a.overall_score).slice(0,8);
+    dc('peerChart4');
+    charts.peerChart4=new Chart(document.getElementById('peerChart4'),{type:'bar',indexAxis:'y',
+      data:{labels:peers.map(r=>r.symbol),datasets:[{label:'Score',
+        data:peers.map(r=>Number(r.overall_score||0).toFixed(1)),
+        backgroundColor:peers.map(r=>r.symbol===sym?'#4F9EFF':Number(r.overall_score||0)>=60?'rgba(46,204,113,.5)':'rgba(90,104,128,.4)'),
+        borderRadius:3}]},
+      options:{...CO(),plugins:{legend:{display:false}},scales:{x:{min:0,max:100,grid:{color:'rgba(30,40,64,.4)'}},y:{grid:{display:false},ticks:{color:'#5A6880'}}}}});
+
+    // Pros/cons from full endpoint
+    const pc=proscons?.pros_cons||[];
+    const prosDiv=document.getElementById('prosDiv');prosDiv.innerHTML='';
+    const consDiv=document.getElementById('consDiv');consDiv.innerHTML='';
+    if(pc.length===0){
+      prosDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">No pros/cons data available for this company.</div>';
+      consDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">Run the ETL pipeline to generate AI pros/cons.</div>';
+    } else {
+      pc.filter(p=>p.is_pro).forEach(p=>prosDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.18)"><span style="color:#2ECC71;font-size:14px">✓</span><span style="font-size:11px;line-height:1.4">${p.text}</span></div>`);
+      pc.filter(p=>!p.is_pro).forEach(p=>consDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.18)"><span style="color:#E74C3C;font-size:14px">✗</span><span style="font-size:11px;line-height:1.4">${p.text}</span></div>`);
+    }
+  }catch(e){hideLoad();showErr('Error loading '+sym+': '+e.message);}
+}
+
+const tabInits={p1:()=>{},p2:()=>{const s=document.getElementById('compSel4');if(s.options.length>1){s.selectedIndex=1;loadCompany4(s.value);}}};
+function showTab(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');el.classList.add('active');
+  if(!inited[id]){tabInits[id]();inited[id]=true;}
+}
+boot();
+</script>
+</body></html>

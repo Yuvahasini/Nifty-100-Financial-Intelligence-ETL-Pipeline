@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard 7 — Dividend & Shareholder Returns</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div id="loadingOverlay" style="position:fixed;inset:0;background:rgba(5,7,10,.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div style="width:32px;height:32px;border:3px solid rgba(79,158,255,.2);border-top-color:#4F9EFF;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div id="loadMsg" style="color:#5A6880;font-size:12px;font-family:'DM Mono',monospace">Loading dividend data…</div>
+</div>
+<div id="errToast" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none"></div>
+<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}</style>
+
+<nav>
+  <div class="nav-brand">N100·BI</div>
+  <div class="nav-links">
+    <a class="nav-link" href="01_executive_overview.html">① Executive</a>
+    <a class="nav-link" href="02_company_deep_dive.html">② Company</a>
+    <a class="nav-link" href="03_sector_comparison.html">③ Sectors</a>
+    <a class="nav-link" href="04_health_scorecard.html">④ Health</a>
+    <a class="nav-link" href="05_growth_analytics.html">⑤ Growth</a>
+    <a class="nav-link" href="06_debt_leverage.html">⑥ Debt</a>
+    <a class="nav-link active" href="07_dividend_returns.html">⑦ Dividend</a>
+  </div>
+  <div class="nav-right"><span class="live-dot"></span>Dividend & Returns</div>
+</nav>
+<div class="tabs">
+  <div class="tab active" onclick="showTab('p1',this)">7.1 Dividend Analysis</div>
+  <div class="tab" onclick="showTab('p2',this)">7.2 Company Returns Deep Dive</div>
+</div>
+
+<!-- PAGE 7.1 -->
+<div id="p1" class="page active">
+  <div class="kpi-row g4">
+    <div class="kpi"><div class="kpi-top" style="background:var(--green)"></div>
+      <div class="kpi-label">Paid Dividend (Latest)</div><div class="kpi-val lg" style="color:var(--green)" id="kPaid">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--accent)"></div>
+      <div class="kpi-label">Avg Payout (Universe)</div><div class="kpi-val lg" id="kAvgPayout">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--amber)"></div>
+      <div class="kpi-label">High Payout (&gt;60%)</div><div class="kpi-val lg" id="kHighPayout">—</div></div>
+    <div class="kpi"><div class="kpi-top" style="background:var(--red)"></div>
+      <div class="kpi-label">No Dividend</div><div class="kpi-val lg" style="color:var(--red)" id="kNoPayout">—</div></div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Top 20 — Highest Avg Dividend Payout %</div>
+      <div class="h280"><canvas id="divPayoutBar"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Dividend Payout Distribution</div>
+      <div class="h280"><canvas id="divDistChart"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Dividend Summary Table</div>
+    <div class="tbl" style="max-height:240px;overflow-y:auto"><table>
+      <thead><tr><th>Symbol</th><th>Company</th><th>Sector</th><th>Latest Payout%</th><th>Latest EPS</th><th>Health Score</th></tr></thead>
+      <tbody id="divTbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- PAGE 7.2 -->
+<div id="p2" class="page">
+  <div class="slicer-row">
+    <span class="slicer-label">Company:</span>
+    <select class="sel" id="retCompSel" onchange="loadReturnsCompany(this.value)" style="min-width:280px">
+      <option value="">— select —</option>
+    </select>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Dividend Payout % — Trend</div>
+      <div class="h220"><canvas id="divTrendChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">EPS Compounding — Full History (₹)</div>
+      <div class="h220"><canvas id="epsCompChart"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-row r2">
+    <div class="panel">
+      <div class="panel-title">Compounded Sales & Profit Growth by Period</div>
+      <div class="h200"><canvas id="cagrChart7"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Stock CAGR by Period</div>
+      <div class="h200"><canvas id="stockCagrChart7"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Full CAGR & Returns Table</div>
+    <div class="tbl"><table>
+      <thead><tr><th>Period</th><th>Sales CAGR%</th><th>Profit CAGR%</th><th>Stock CAGR%</th><th>ROE%</th></tr></thead>
+      <tbody id="returnsTbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+const API='http://localhost:8000/api';
+Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
+const CO=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}});
+const C=['#4F9EFF','#2ECC71','#F39C12','#E74C3C','#9B59B6','#1ABC9C','#E67E22','#3498DB'];
+
+async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error(p+' '+r.status);return r.json();}
+function showLoad(m){document.getElementById('loadMsg').textContent=m;document.getElementById('loadingOverlay').classList.remove('hidden');}
+function hideLoad(){document.getElementById('loadingOverlay').classList.add('hidden');}
+function showErr(m){const t=document.getElementById('errToast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',5000);}
+
+let ALL_LB=[], ALL_PL_LATEST={}, inited={p1:false,p2:false};
+const charts={};function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+async function boot(){
+  showLoad('Fetching company list…');
+  try{
+    ALL_LB=await api('/leaderboard/?n=200');
+    const sel=document.getElementById('retCompSel');
+    [...ALL_LB].sort((a,b)=>a.symbol.localeCompare(b.symbol)).forEach(r=>{
+      const o=document.createElement('option');o.value=r.symbol;o.textContent=r.symbol+' — '+(r.company_name||r.symbol);sel.appendChild(o);});
+
+    showLoad('Fetching dividend data…');
+    const syms=ALL_LB.map(r=>r.symbol);
+    const batches=[];for(let i=0;i<syms.length;i+=10)batches.push(syms.slice(i,i+10));
+    for(const batch of batches){
+      await Promise.all(batch.map(async sym=>{
+        try{
+          const pl=await api('/companies/'+sym+'/profit-loss/');
+          const rows=Array.isArray(pl)?pl:(pl.results||[]);
+          if(rows.length)ALL_PL_LATEST[sym]=rows[rows.length-1];
+        }catch(e){}
+      }));
+    }
+    hideLoad(); renderP1(); inited.p1=true;
+  }catch(e){hideLoad();showErr('Cannot reach API. '+e.message);}
+}
+
+function renderP1(){
+  const data=ALL_LB.map(r=>{
+    const pl=ALL_PL_LATEST[r.symbol]||{};
+    return{symbol:r.symbol,company_name:r.company_name,sector:r.sector,
+      score:Number(r.overall_score||0),health_label:r.health_label,
+      payout:pl.dividend_payout_pct!=null?Number(pl.dividend_payout_pct):null,
+      eps:pl.eps!=null?Number(pl.eps):null};
+  });
+
+  const paid=data.filter(r=>r.payout!=null&&r.payout>0).length;
+  const payouts=data.filter(r=>r.payout!=null).map(r=>r.payout);
+  const avgPayout=payouts.length?payouts.reduce((a,b)=>a+b,0)/payouts.length:0;
+  const highPayout=payouts.filter(v=>v>60).length;
+  const noPayout=data.filter(r=>r.payout==null||r.payout===0).length;
+
+  document.getElementById('kPaid').textContent=paid;
+  document.getElementById('kAvgPayout').textContent=avgPayout.toFixed(1)+'%';
+  document.getElementById('kHighPayout').textContent=highPayout;
+  document.getElementById('kNoPayout').textContent=noPayout;
+
+  const top20=data.filter(r=>r.payout!=null).sort((a,b)=>b.payout-a.payout).slice(0,20);
+  dc('divPayoutBar');
+  charts.divPayoutBar=new Chart(document.getElementById('divPayoutBar'),{type:'bar',indexAxis:'y',
+    data:{labels:top20.map(r=>r.symbol),datasets:[{label:'Payout%',
+      data:top20.map(r=>r.payout.toFixed(1)),
+      backgroundColor:top20.map(r=>r.payout>=80?'rgba(46,204,113,.75)':r.payout>=50?'rgba(79,158,255,.7)':'rgba(243,156,18,.65)'),
+      borderRadius:3}]},
+    options:{...CO(),plugins:{legend:{display:false}},scales:{x:{min:0,max:110,grid:{color:'rgba(30,40,64,.4)'}},y:{grid:{display:false},ticks:{color:'#5A6880'}}}}});
+
+  // Distribution bins
+  const bins=[[0,20,'0–20%'],[20,40,'20–40%'],[40,60,'40–60%'],[60,80,'60–80%'],[80,101,'80%+']];
+  const binCounts=bins.map(([lo,hi])=>payouts.filter(v=>v>=lo&&v<hi).length);
+  dc('divDistChart');
+  charts.divDistChart=new Chart(document.getElementById('divDistChart'),{type:'bar',
+    data:{labels:bins.map(b=>b[2]),datasets:[{label:'Companies',data:binCounts,
+      backgroundColor:['rgba(231,76,60,.6)','rgba(243,156,18,.6)','rgba(79,158,255,.65)','rgba(46,204,113,.6)','rgba(46,204,113,.8)'],borderRadius:4}]},
+    options:{...CO(),plugins:{legend:{display:false}}}});
+
+  const tb=document.getElementById('divTbody');tb.innerHTML='';
+  data.filter(r=>r.payout!=null).sort((a,b)=>b.payout-a.payout).forEach(r=>{
+    const sc=r.score;const tc=sc>=60?'tag-g':sc>=40?'tag-a':'tag-w';
+    tb.innerHTML+=`<tr><td class="sym">${r.symbol}</td><td>${r.company_name||'—'}</td><td>${r.sector||'—'}</td>
+      <td class="${r.payout>=50?'pos':''}">${r.payout!=null?r.payout.toFixed(1)+'%':'—'}</td>
+      <td>${r.eps!=null?'₹'+r.eps.toFixed(1):'—'}</td>
+      <td><span class="tag ${tc}">${sc.toFixed(1)}</span></td></tr>`;});
+}
+
+async function loadReturnsCompany(sym){
+  if(!sym)return;showLoad('Loading '+sym+' returns…');
+  try{
+    const [pl,an]=await Promise.all([
+      api('/companies/'+sym+'/profit-loss/'),
+      api('/companies/'+sym+'/analysis/'),
+    ]);
+    const plRows=Array.isArray(pl)?pl:(pl.results||[]);
+    const anRows=Array.isArray(an)?an:(an.results||[]);
+    hideLoad();
+
+    const plLabels=plRows.map(r=>r.year_label||'');
+    dc('divTrendChart');
+    charts.divTrendChart=new Chart(document.getElementById('divTrendChart'),{type:'line',
+      data:{labels:plLabels,datasets:[{label:'Dividend Payout%',
+        data:plRows.map(r=>r.dividend_payout_pct!=null?Number(r.dividend_payout_pct):null),
+        borderColor:'#2ECC71',backgroundColor:'rgba(46,204,113,.08)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#2ECC71'}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+
+    dc('epsCompChart');
+    charts.epsCompChart=new Chart(document.getElementById('epsCompChart'),{type:'line',
+      data:{labels:plLabels,datasets:[{label:'EPS ₹',
+        data:plRows.map(r=>r.eps!=null?Number(r.eps):null),
+        borderColor:'#4F9EFF',backgroundColor:'rgba(79,158,255,.08)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#4F9EFF'}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+
+    const anLabels=anRows.map(r=>r.period||'');
+    dc('cagrChart7');
+    charts.cagrChart7=new Chart(document.getElementById('cagrChart7'),{type:'bar',
+      data:{labels:anLabels,datasets:[
+        {label:'Sales CAGR%',data:anRows.map(r=>Number(r.compounded_sales_growth_pct||0)),backgroundColor:'rgba(79,158,255,.6)',borderRadius:3},
+        {label:'Profit CAGR%',data:anRows.map(r=>Number(r.compounded_profit_growth_pct||0)),backgroundColor:'rgba(46,204,113,.6)',borderRadius:3}]},
+      options:{...CO()}});
+
+    dc('stockCagrChart7');
+    charts.stockCagrChart7=new Chart(document.getElementById('stockCagrChart7'),{type:'bar',
+      data:{labels:anLabels,datasets:[{label:'Stock CAGR%',
+        data:anRows.map(r=>Number(r.stock_price_cagr_pct||0)),
+        backgroundColor:anRows.map(r=>Number(r.stock_price_cagr_pct||0)>=0?'rgba(155,89,182,.7)':'rgba(231,76,60,.65)'),borderRadius:4}]},
+      options:{...CO(),plugins:{legend:{display:false}}}});
+
+    const tb=document.getElementById('returnsTbody');tb.innerHTML='';
+    anRows.forEach(r=>{
+      const s=Number(r.compounded_sales_growth_pct||0);const p=Number(r.compounded_profit_growth_pct||0);
+      const st=Number(r.stock_price_cagr_pct||0);const roe=Number(r.roe_pct||0);
+      tb.innerHTML+=`<tr><td>${r.period||'—'}</td>
+        <td class="${s>=0?'pos':'neg'}">${s>=0?'+':''}${s.toFixed(1)}%</td>
+        <td class="${p>=0?'pos':'neg'}">${p>=0?'+':''}${p.toFixed(1)}%</td>
+        <td class="${st>=0?'pos':'neg'}">${st>=0?'+':''}${st.toFixed(1)}%</td>
+        <td>${roe.toFixed(1)}%</td></tr>`;});
+  }catch(e){hideLoad();showErr('Error: '+e.message);}
+}
+
+const tabInits={p1:()=>{},p2:()=>{const s=document.getElementById('retCompSel');if(ALL_LB.length){s.value=ALL_LB[0].symbol;loadReturnsCompany(ALL_LB[0].symbol);}}};
+function showTab(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');el.classList.add('active');
+  if(!inited[id]){tabInits[id]();inited[id]=true;}
+}
+boot();
+</script>
+</body></html>
