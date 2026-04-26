@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS dim_health_label (
 );
 
 CREATE TABLE IF NOT EXISTS fact_profit_loss (
+    id                      SERIAL PRIMARY KEY,
     symbol                  VARCHAR(20) REFERENCES dim_company(symbol),
     year_id                 INT REFERENCES dim_year(year_id),
     sales                   NUMERIC(18,2),
@@ -199,46 +200,49 @@ CREATE TABLE IF NOT EXISTS fact_profit_loss (
     net_profit_margin_pct   NUMERIC(8,2),
     expense_ratio_pct       NUMERIC(8,2),
     interest_coverage       NUMERIC(10,2),
-    PRIMARY KEY (symbol, year_id)
+    UNIQUE (symbol, year_id)
 );
 
 CREATE TABLE IF NOT EXISTS fact_balance_sheet (
-    symbol              VARCHAR(20) REFERENCES dim_company(symbol),
-    year_id             INT REFERENCES dim_year(year_id),
-    equity_capital      NUMERIC(18,2),
-    reserves            NUMERIC(18,2),
-    borrowings          NUMERIC(18,2),
-    other_liabilities   NUMERIC(18,2),
-    total_liabilities   NUMERIC(18,2),
-    fixed_assets        NUMERIC(18,2),
-    cwip                NUMERIC(18,2),
-    investments         NUMERIC(18,2),
-    other_asset         NUMERIC(18,2),
-    total_assets        NUMERIC(18,2),
-    debt_to_equity      NUMERIC(10,4),
-    equity_ratio        NUMERIC(10,4),
-    PRIMARY KEY (symbol, year_id)
+    id                      SERIAL PRIMARY KEY,
+    symbol                  VARCHAR(20) REFERENCES dim_company(symbol),
+    year_id                 INT REFERENCES dim_year(year_id),
+    equity_capital          NUMERIC(18,2),
+    reserves                NUMERIC(18,2),
+    borrowings              NUMERIC(18,2),
+    other_liabilities       NUMERIC(18,2),
+    total_liabilities       NUMERIC(18,2),
+    fixed_assets            NUMERIC(18,2),
+    cwip                    NUMERIC(18,2),
+    investments             NUMERIC(18,2),
+    other_asset             NUMERIC(18,2),
+    total_assets            NUMERIC(18,2),
+    debt_to_equity          NUMERIC(10,4),
+    equity_ratio            NUMERIC(10,4),
+    UNIQUE (symbol, year_id)
 );
 
 CREATE TABLE IF NOT EXISTS fact_cash_flow (
-    symbol              VARCHAR(20) REFERENCES dim_company(symbol),
-    year_id             INT REFERENCES dim_year(year_id),
-    operating_activity  NUMERIC(18,2),
-    investing_activity  NUMERIC(18,2),
-    financing_activity  NUMERIC(18,2),
-    net_cash_flow       NUMERIC(18,2),
-    free_cash_flow      NUMERIC(18,2),
-    PRIMARY KEY (symbol, year_id)
+    id                      SERIAL PRIMARY KEY,
+    symbol                  VARCHAR(20) REFERENCES dim_company(symbol),
+    year_id                 INT REFERENCES dim_year(year_id),
+    operating_activity      NUMERIC(18,2),
+    investing_activity      NUMERIC(18,2),
+    financing_activity      NUMERIC(18,2),
+    net_cash_flow           NUMERIC(18,2),
+    free_cash_flow          NUMERIC(18,2),
+    UNIQUE (symbol, year_id)
 );
 
 CREATE TABLE IF NOT EXISTS fact_analysis (
-    symbol                          VARCHAR(20) REFERENCES dim_company(symbol),
-    period                          VARCHAR(10),
+    id                      SERIAL PRIMARY KEY,
+    symbol                  VARCHAR(20) REFERENCES dim_company(symbol),
+    period                  VARCHAR(10),
     compounded_sales_growth_pct     NUMERIC(8,2),
     compounded_profit_growth_pct    NUMERIC(8,2),
     stock_price_cagr_pct            NUMERIC(8,2),
     roe_pct                         NUMERIC(8,2),
-    PRIMARY KEY (symbol, period)
+    UNIQUE (symbol, period)
 );
 
 CREATE TABLE IF NOT EXISTS fact_pros_cons (
