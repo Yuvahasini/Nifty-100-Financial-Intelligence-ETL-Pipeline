@@ -73,6 +73,7 @@ class DimHealthLabel(models.Model):
 
 
 class FactProfitLoss(models.Model):
+    id                   = models.AutoField(primary_key=True)
     symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
     year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
     sales                = models.DecimalField(max_digits=18, decimal_places=2, null=True)
@@ -101,20 +102,21 @@ class FactProfitLoss(models.Model):
 
 
 class FactBalanceSheet(models.Model):
-    symbol            = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    year              = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
-    equity_capital    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    reserves          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    borrowings        = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    other_liabilities = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    total_liabilities = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    fixed_assets      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    cwip              = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    investments       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    other_asset       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    total_assets      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    debt_to_equity    = models.DecimalField(max_digits=10, decimal_places=4, null=True)
-    equity_ratio      = models.DecimalField(max_digits=10, decimal_places=4, null=True)
+    id                   = models.AutoField(primary_key=True)
+    symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
+    equity_capital       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    reserves             = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    borrowings           = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    other_liabilities    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    total_liabilities    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    fixed_assets         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    cwip                 = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    investments          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    other_asset          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    total_assets         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    debt_to_equity       = models.DecimalField(max_digits=10, decimal_places=4, null=True)
+    equity_ratio         = models.DecimalField(max_digits=10, decimal_places=4, null=True)
 
     class Meta:
         managed = False
@@ -123,13 +125,14 @@ class FactBalanceSheet(models.Model):
 
 
 class FactCashFlow(models.Model):
-    symbol             = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    year               = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
-    operating_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    investing_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    financing_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    net_cash_flow      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    free_cash_flow     = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    id                   = models.AutoField(primary_key=True)
+    symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
+    operating_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    investing_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    financing_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    net_cash_flow        = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    free_cash_flow       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
 
     class Meta:
         managed = False
@@ -138,6 +141,7 @@ class FactCashFlow(models.Model):
 
 
 class FactAnalysis(models.Model):
+    id                           = models.AutoField(primary_key=True)
     symbol                       = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
     period                       = models.CharField(max_length=10)
     compounded_sales_growth_pct  = models.DecimalField(max_digits=8, decimal_places=2, null=True)
