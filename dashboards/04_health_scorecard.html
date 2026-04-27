@@ -205,26 +205,40 @@ async function loadCompany4(sym){
   if(!sym)return;
   showLoad('Loading '+sym+' scorecard…');
   try{
-    const [ml,detail,proscons]=await Promise.all([
+    const [mlRaw,detail,proscons]=await Promise.all([
       api('/companies/'+sym+'/ml-score/'),
       api('/companies/'+sym+'/'),
       fetch(API+'/companies/'+sym+'/full/').then(r=>r.json()).catch(()=>null),
     ]);
-    const score=Array.isArray(ml)?ml[ml.length-1]:ml;
+    // ml-score returns a list ordered by -computed_at; index 0 = latest
+    const mlList=Array.isArray(mlRaw)?mlRaw:(mlRaw.results||[mlRaw]);
+    const score=mlList.length>0?mlList[0]:null;
     hideLoad();
 
-    document.getElementById('c4_score').textContent=score?Number(score.overall_score||0).toFixed(1):'—';
-    document.getElementById('c4_label').innerHTML=score?`<span style="color:${score.health_label==='GOOD'||score.health_label==='EXCELLENT'?'#2ECC71':score.health_label==='WEAK'||score.health_label==='POOR'?'#E74C3C':'#F39C12'}">${score.health_label}</span>`:'—';
-    document.getElementById('c4_sector').textContent=detail?.sector||'—';
-    document.getElementById('c4_div').textContent=score&&score.dividend_score!=null?Number(score.dividend_score).toFixed(1):'—';
+    const sc_val = score ? Number(score.overall_score||0) : 0;
+    const sc_lbl = score ? (score.health_label||'—') : '—';
+    const sc_col = sc_lbl==='GOOD'||sc_lbl==='EXCELLENT' ? '#2ECC71' : sc_lbl==='WEAK'||sc_lbl==='POOR' ? '#E74C3C' : '#F39C12';
+    document.getElementById('c4_score').textContent = sc_val.toFixed(1);
+    document.getElementById('c4_score').style.color = sc_col;
+    document.getElementById('c4_label').innerHTML = `<span style="color:${sc_col}">${sc_lbl}</span>`;
+    document.getElementById('c4_sector').textContent = detail?.sector||'—';
+    document.getElementById('c4_div').textContent = score&&score.dividend_score!=null?Number(score.dividend_score).toFixed(1):'—';
 
     // Radar
     dc('radarChart4');
     if(score){
+      const radarData=[
+        Number(score.profitability_score||0),
+        Number(score.growth_score||0),
+        Number(score.leverage_score||0),
+        Number(score.cashflow_score||0),
+        Number(score.dividend_score||0),
+        Number(score.trend_score||0)
+      ];
       charts.radarChart4=new Chart(document.getElementById('radarChart4'),{type:'radar',
         data:{labels:['Profitability','Growth','Leverage','Cashflow','Dividend','Trend'],
           datasets:[{label:sym,
-            data:[score.profitability_score,score.growth_score,score.leverage_score,score.cashflow_score,score.dividend_score||0,score.trend_score||0].map(v=>Number(v||0)),
+            data:radarData,
             borderColor:'#4F9EFF',backgroundColor:'rgba(79,158,255,.1)',pointBackgroundColor:'#4F9EFF',pointRadius:4,borderWidth:2}]},
         options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:100,grid:{color:'rgba(30,40,64,.8)'},ticks:{display:false},pointLabels:{color:'#5A6880',font:{size:10}}}},plugins:{legend:{display:false}}}});
     }
@@ -240,15 +254,36 @@ async function loadCompany4(sym){
       options:{...CO(),plugins:{legend:{display:false}},scales:{x:{min:0,max:100,grid:{color:'rgba(30,40,64,.4)'}},y:{grid:{display:false},ticks:{color:'#5A6880'}}}}});
 
     // Pros/cons from full endpoint
-    const pc=proscons?.pros_cons||[];
+    // pros/cons: try /full/ endpoint, fallback to score-based generation
     const prosDiv=document.getElementById('prosDiv');prosDiv.innerHTML='';
     const consDiv=document.getElementById('consDiv');consDiv.innerHTML='';
-    if(pc.length===0){
-      prosDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">No pros/cons data available for this company.</div>';
-      consDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">Run the ETL pipeline to generate AI pros/cons.</div>';
-    } else {
+    let pc=[];
+    if(proscons){
+      // try various response shapes
+      pc=proscons.pros_cons||proscons.results||[];
+      if(!Array.isArray(pc))pc=[];
+    }
+    if(pc.length>0){
       pc.filter(p=>p.is_pro).forEach(p=>prosDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.18)"><span style="color:#2ECC71;font-size:14px">✓</span><span style="font-size:11px;line-height:1.4">${p.text}</span></div>`);
       pc.filter(p=>!p.is_pro).forEach(p=>consDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.18)"><span style="color:#E74C3C;font-size:14px">✗</span><span style="font-size:11px;line-height:1.4">${p.text}</span></div>`);
+    } else if(score){
+      // auto-generate from scores
+      const pros=[],cons=[];
+      if(Number(score.profitability_score||0)>=60)pros.push('Strong profitability with healthy margins');
+      else cons.push('Profitability below benchmark — margins need improvement');
+      if(Number(score.growth_score||0)>=60)pros.push('Consistent revenue and profit growth trend');
+      else cons.push('Sluggish revenue growth over recent periods');
+      if(Number(score.leverage_score||0)>=60)pros.push('Low debt burden with strong equity base');
+      else cons.push('High leverage — debt levels are elevated relative to equity');
+      if(Number(score.cashflow_score||0)>=60)pros.push('Strong operating cash flows — earnings converting to cash');
+      else cons.push('Weak free cash flow — earnings may not be converting to cash');
+      if(Number(score.dividend_score||0)>=60)pros.push('Consistent dividend history rewarding shareholders');
+      else cons.push('Low or inconsistent dividend payout history');
+      pros.forEach(t=>prosDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.18)"><span style="color:#2ECC71;font-size:14px">✓</span><span style="font-size:11px;line-height:1.4">${t}</span></div>`);
+      cons.forEach(t=>consDiv.innerHTML+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:4px;margin-bottom:6px;background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.18)"><span style="color:#E74C3C;font-size:14px">✗</span><span style="font-size:11px;line-height:1.4">${t}</span></div>`);
+    } else {
+      prosDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">Run ETL pipeline to generate scores.</div>';
+      consDiv.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">python etl/04_ml_scores.py</div>';
     }
   }catch(e){hideLoad();showErr('Error loading '+sym+': '+e.message);}
 }
