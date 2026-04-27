@@ -154,9 +154,13 @@ async function boot(){
 function renderP1(){
   const lb=ALL_LB;
   const total=lb.length;
+  // Count all label variants correctly
   const good=lb.filter(r=>r.health_label==='EXCELLENT'||r.health_label==='GOOD').length;
   const avg=lb.filter(r=>r.health_label==='AVERAGE').length;
   const weak=lb.filter(r=>r.health_label==='WEAK'||r.health_label==='POOR').length;
+  // Debug: log actual labels in dataset
+  const labelSet=[...new Set(lb.map(r=>r.health_label))];
+  console.log('Health labels in dataset:',labelSet,'counts:',{good,avg,weak});
   const top=lb[0]||{};
   document.getElementById('kTotal').textContent=total;
   document.getElementById('kGood').textContent=good;
@@ -237,18 +241,53 @@ function filterLb(f,el){
   el.classList.add('on');lbFilter=f;renderP3();
 }
 
+function emptyChart(id, msg){
+  // Safely show a "no data" message without crashing
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(charts[id]){try{charts[id].destroy();}catch(e){}delete charts[id];}
+  const parent=el.parentElement;
+  // Replace canvas with message div, store canvas for later restore
+  el.style.display='none';
+  const old=parent.querySelector('.no-data-msg');
+  if(old)old.remove();
+  const div=document.createElement('div');
+  div.className='no-data-msg';
+  div.style.cssText='display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:12px;text-align:center';
+  div.textContent=msg||'No companies match this filter';
+  parent.appendChild(div);
+}
+function restoreCanvas(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.style.display='';
+  const parent=el.parentElement;
+  const msg=parent.querySelector('.no-data-msg');
+  if(msg)msg.remove();
+}
+
 function renderP3(){
   let lb=ALL_LB;
   if(lbFilter!=='ALL')lb=lb.filter(r=>r.health_label===lbFilter);
   const sorted=[...lb].sort((a,b)=>b.overall_score-a.overall_score);
+
+  if(sorted.length===0){
+    emptyChart('lbTopChart','No companies with label: '+lbFilter);
+    emptyChart('lbBotChart','No companies with label: '+lbFilter);
+    document.getElementById('lbTbody').innerHTML=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:16px">No companies match the selected filter</td></tr>`;
+    return;
+  }
+
+  restoreCanvas('lbTopChart'); restoreCanvas('lbBotChart');
   const top20=sorted.slice(0,20);
-  const bot10=[...sorted].reverse().slice(0,10);
+  const bot10=[...sorted].reverse().slice(0,Math.min(10,sorted.length));
 
   dc('lbTopChart');
   charts.lbTopChart=new Chart(document.getElementById('lbTopChart'),{type:'bar',indexAxis:'y',
     data:{labels:top20.map(r=>r.symbol),datasets:[{label:'Score',
       data:top20.map(r=>Number(r.overall_score).toFixed(1)),
-      backgroundColor:'rgba(46,204,113,.65)',borderRadius:3}]},
+      backgroundColor:top20.map(r=>{const l=r.health_label;return l==='EXCELLENT'||l==='GOOD'?'rgba(46,204,113,.7)':l==='WEAK'||l==='POOR'?'rgba(243,156,18,.6)':'rgba(79,158,255,.65)';}),
+      borderRadius:3}]},
     options:{...CO(),plugins:{legend:{display:false}},scales:{x:{min:0,max:100,grid:{color:'rgba(30,40,64,.4)'}},y:{grid:{display:false},ticks:{color:'#5A6880'}}}}});
 
   dc('lbBotChart');
