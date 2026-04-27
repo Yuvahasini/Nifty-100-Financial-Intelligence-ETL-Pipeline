@@ -12,7 +12,10 @@
   <div id="loadMsg" style="color:#5A6880;font-size:12px;font-family:'DM Mono',monospace">Loading growth data…</div>
 </div>
 <div id="errToast" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#E74C3C;color:#fff;padding:8px 18px;border-radius:6px;font-size:11px;z-index:1000;display:none"></div>
-<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}</style>
+<style>@keyframes spin{to{transform:rotate(360deg)}} #loadingOverlay.hidden{display:none!important}
+.no-data-msg{display:flex;align-items:center;justify-content:center;height:100%;color:#5A6880;font-size:11px;font-family:'DM Mono',monospace;text-align:center;flex-direction:column;gap:6px;line-height:1.6}
+.no-data-msg span{color:#4F9EFF;font-size:10px}
+</style>
 
 <nav>
   <div class="nav-brand">N100·BI</div>
@@ -127,11 +130,11 @@
   <div class="chart-row r2">
     <div class="panel">
       <div class="panel-title">Stock Price CAGR</div>
-      <div class="h180"><canvas id="stockCagrChart5"></canvas></div>
+      <div class="h180" id="stockCagrWrap5"><canvas id="stockCagrChart5"></canvas></div>
     </div>
     <div class="panel">
       <div class="panel-title">ROE % by Period</div>
-      <div class="h180"><canvas id="roeCagrChart"></canvas></div>
+      <div class="h180" id="roeCagrWrap5"><canvas id="roeCagrChart"></canvas></div>
     </div>
   </div>
   <div class="panel">
@@ -148,7 +151,6 @@ const API='http://localhost:8000/api';
 Chart.defaults.color='#5A6880';Chart.defaults.borderColor='#1E2840';
 Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=10;
 const CO=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:8,padding:8,color:'#5A6880'}}},scales:{x:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}},y:{grid:{color:'rgba(30,40,64,.5)'},ticks:{color:'#5A6880'}}}});
-const C=['#4F9EFF','#2ECC71','#F39C12','#E74C3C','#9B59B6','#1ABC9C'];
 
 async function api(p){const r=await fetch(API+p);if(!r.ok)throw new Error(p+' '+r.status);return r.json();}
 function showLoad(m){document.getElementById('loadMsg').textContent=m;document.getElementById('loadingOverlay').classList.remove('hidden');}
@@ -157,7 +159,22 @@ function showErr(m){const t=document.getElementById('errToast');t.textContent=m;
 function fmt(n){if(n==null||isNaN(n))return'—';const a=Math.abs(n);if(a>=100000)return'₹'+(n/100000).toFixed(1)+' L Cr';if(a>=1000)return'₹'+(n/1000).toFixed(0)+' K Cr';return'₹'+Number(n).toFixed(0)+' Cr';}
 
 let ALL_COMPANIES=[], inited={p1:false,p2:false,p3:false};
-const charts={};function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+const charts={};
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+/** Replace wrap contents with a canvas or a no-data message */
+function renderInWrap(wrapId, canvasId, drawFn, hasData, noDataMsg) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  // Always restore a fresh canvas first
+  wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  if (!hasData) {
+    wrap.innerHTML = `<div class="no-data-msg">${noDataMsg}</div>`;
+    return;
+  }
+  const cv = document.getElementById(canvasId);
+  if (cv) drawFn(cv);
+}
 
 async function boot(){
   showLoad('Loading company list…');
@@ -251,49 +268,123 @@ async function loadP2Company(sym){
   }catch(e){hideLoad();showErr('Error: '+e.message);}
 }
 
+function calcCAGR(vals, years){
+  const start=vals[0],end=vals[vals.length-1];
+  if(!start||start<=0||!end||years<=0)return null;
+  return (Math.pow(end/start, 1/years)-1)*100;
+}
+
 async function loadP3Company(sym){
   if(!sym)return;showLoad('Loading CAGR data…');
   try{
-    const an=await api('/companies/'+sym+'/analysis/');
-    const rows=Array.isArray(an)?an:(an.results||[]);
+    const [anRaw, plRaw]=await Promise.all([
+      api('/companies/'+sym+'/analysis/').catch(()=>null),
+      api('/companies/'+sym+'/profit-loss/'),
+    ]);
+    const anRows=anRaw?(Array.isArray(anRaw)?anRaw:(anRaw.results||[])):[];
+    const plRows=Array.isArray(plRaw)?plRaw:(plRaw.results||[]);
     hideLoad();
-    if(rows.length===0){
-      ['salesCagrChart','profCagrChart','stockCagrChart5','roeCagrChart'].forEach(id=>{
-        const ctx=document.getElementById(id);
-        if(ctx){const p=ctx.parentElement;p.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:11px">No CAGR analysis data for this company.<br>Run etl/04_ml_scores.py to generate it.</div>';}});
-      document.getElementById('cagrTable5').innerHTML='<tr><td colspan="5" style="color:var(--muted);text-align:center">No data</td></tr>';
-      return;
+
+    let rows=anRows;
+
+    if(rows.length===0 && plRows.length>=2){
+      const sales=plRows.map(r=>Number(r.sales||0));
+      const profit=plRows.map(r=>Number(r.net_profit||0));
+      const n=plRows.length-1;
+      const periods=[
+        {label:'10Y',yrs:Math.min(10,n)},
+        {label:'5Y', yrs:Math.min(5,n)},
+        {label:'3Y', yrs:Math.min(3,n)},
+        {label:'TTM',yrs:1},
+      ].filter(p=>p.yrs>=1&&p.yrs<=n);
+
+      rows=periods.map(p=>{
+        const sl=sales.slice(-(p.yrs+1));
+        const pr=profit.slice(-(p.yrs+1));
+        const sc=calcCAGR(sl,p.yrs);
+        const pc=calcCAGR(pr.map(v=>Math.max(v,0.01)),p.yrs);
+        return{
+          period:p.label,
+          compounded_sales_growth_pct:sc!=null?sc.toFixed(1):null,
+          compounded_profit_growth_pct:pc!=null?pc.toFixed(1):null,
+          stock_price_cagr_pct:null,
+          roe_pct:null
+        };
+      });
     }
+
+    if(rows.length===0){showErr('No data found for '+sym);return;}
+
     const labels=rows.map(r=>r.period||'');
+    const salesV=rows.map(r=>r.compounded_sales_growth_pct!=null?Number(r.compounded_sales_growth_pct):null);
+    const profV=rows.map(r=>r.compounded_profit_growth_pct!=null?Number(r.compounded_profit_growth_pct):null);
+    const stockV=rows.map(r=>r.stock_price_cagr_pct!=null?Number(r.stock_price_cagr_pct):null);
+    const roeV=rows.map(r=>r.roe_pct!=null?Number(r.roe_pct):null);
+
+    // ── Check if ROE actually varies (not all same value) ─────────────────
+    const roeValid = roeV.filter(v=>v!=null);
+    const roeVaries = roeValid.length > 0 && (new Set(roeValid.map(v=>v.toFixed(2))).size > 1 || roeValid.length >= 2);
+    const hasStock  = stockV.some(v=>v!=null);
+    const hasRoe    = roeValid.length > 0;
+
     dc('salesCagrChart');
     charts.salesCagrChart=new Chart(document.getElementById('salesCagrChart'),{type:'bar',
-      data:{labels,datasets:[{label:'Sales CAGR%',data:rows.map(r=>Number(r.compounded_sales_growth_pct||0)),
-        backgroundColor:rows.map(r=>Number(r.compounded_sales_growth_pct||0)>=10?'rgba(46,204,113,.7)':'rgba(79,158,255,.65)'),borderRadius:4}]},
+      data:{labels,datasets:[{label:'Sales CAGR%',data:salesV,
+        backgroundColor:salesV.map(v=>v==null?'transparent':v>=10?'rgba(46,204,113,.7)':v>=0?'rgba(79,158,255,.65)':'rgba(231,76,60,.65)'),borderRadius:4}]},
       options:{...CO(),plugins:{legend:{display:false}}}});
+
     dc('profCagrChart');
     charts.profCagrChart=new Chart(document.getElementById('profCagrChart'),{type:'bar',
-      data:{labels,datasets:[{label:'Profit CAGR%',data:rows.map(r=>Number(r.compounded_profit_growth_pct||0)),
-        backgroundColor:rows.map(r=>Number(r.compounded_profit_growth_pct||0)>=10?'rgba(46,204,113,.7)':'rgba(243,156,18,.65)'),borderRadius:4}]},
+      data:{labels,datasets:[{label:'Profit CAGR%',data:profV,
+        backgroundColor:profV.map(v=>v==null?'transparent':v>=10?'rgba(46,204,113,.7)':v>=0?'rgba(243,156,18,.65)':'rgba(231,76,60,.65)'),borderRadius:4}]},
       options:{...CO(),plugins:{legend:{display:false}}}});
+
+    // ── Stock CAGR panel ─────────────────────────────────────────────────
     dc('stockCagrChart5');
-    charts.stockCagrChart5=new Chart(document.getElementById('stockCagrChart5'),{type:'bar',
-      data:{labels,datasets:[{label:'Stock CAGR%',data:rows.map(r=>Number(r.stock_price_cagr_pct||0)),
-        backgroundColor:rows.map(r=>Number(r.stock_price_cagr_pct||0)>=0?'rgba(155,89,182,.7)':'rgba(231,76,60,.65)'),borderRadius:4}]},
-      options:{...CO(),plugins:{legend:{display:false}}}});
+    renderInWrap(
+      'stockCagrWrap5', 'stockCagrChart5',
+      (cv)=>{
+        charts.stockCagrChart5=new Chart(cv,{type:'bar',
+          data:{labels,datasets:[{label:'Stock CAGR%',data:stockV,
+            backgroundColor:stockV.map(v=>v==null?'transparent':v>=0?'rgba(155,89,182,.7)':'rgba(231,76,60,.65)'),borderRadius:4}]},
+          options:{...CO(),plugins:{legend:{display:false}}}});
+      },
+      hasStock,
+      `Stock price history not in warehouse<br><span>Add fact_stock_price table and re-run etl/05_compute_analysis.py</span>`
+    );
+
+    // ── ROE panel ────────────────────────────────────────────────────────
     dc('roeCagrChart');
-    charts.roeCagrChart=new Chart(document.getElementById('roeCagrChart'),{type:'line',
-      data:{labels,datasets:[{label:'ROE%',data:rows.map(r=>Number(r.roe_pct||0)),borderColor:'#1ABC9C',tension:.4,pointRadius:5,pointBackgroundColor:'#1ABC9C',fill:false}]},
-      options:{...CO(),plugins:{legend:{display:false}}}});
+    renderInWrap(
+      'roeCagrWrap5', 'roeCagrChart',
+      (cv)=>{
+        // If ROE is flat (all same value from dim_company fallback), show as bar
+        // If it varies per period (computed from balance sheet), show as line
+        const chartType = roeVaries ? 'line' : 'bar';
+        const dataset = roeVaries
+          ? {label:'ROE%',data:roeV,borderColor:'#1ABC9C',tension:.4,pointRadius:5,pointBackgroundColor:'#1ABC9C',fill:false}
+          : {label:'ROE% (static — balance sheet needed)',data:roeV,backgroundColor:'rgba(26,188,156,.5)',borderRadius:4};
+        charts.roeCagrChart=new Chart(cv,{type:chartType,
+          data:{labels,datasets:[dataset]},
+          options:{...CO(),plugins:{legend:{display:true,labels:{boxWidth:8,padding:6}}}}});
+      },
+      hasRoe,
+      `ROE data not available<br><span>Re-run etl/05_compute_analysis.py after adding balance sheet data</span>`
+    );
+
     const tb=document.getElementById('cagrTable5');tb.innerHTML='';
     rows.forEach(r=>{
-      const s=Number(r.compounded_sales_growth_pct||0);const p=Number(r.compounded_profit_growth_pct||0);
-      const st=Number(r.stock_price_cagr_pct||0);const roe=Number(r.roe_pct||0);
-      tb.innerHTML+=`<tr><td>${r.period||'—'}</td>
-        <td class="${s>=0?'pos':'neg'}">${s>=0?'+':''}${s.toFixed(1)}%</td>
-        <td class="${p>=0?'pos':'neg'}">${p>=0?'+':''}${p.toFixed(1)}%</td>
-        <td class="${st>=0?'pos':'neg'}">${st>=0?'+':''}${st.toFixed(1)}%</td>
-        <td>${roe.toFixed(1)}%</td></tr>`;});
-  }catch(e){hideLoad();showErr('Error: '+e.message);}
+      const s=r.compounded_sales_growth_pct!=null?Number(r.compounded_sales_growth_pct):null;
+      const p=r.compounded_profit_growth_pct!=null?Number(r.compounded_profit_growth_pct):null;
+      const st=r.stock_price_cagr_pct!=null?Number(r.stock_price_cagr_pct):null;
+      const roe=r.roe_pct!=null?Number(r.roe_pct):null;
+      tb.innerHTML+=`<tr>
+        <td>${r.period||'—'}</td>
+        <td class="${s!=null&&s>=0?'pos':'neg'}">${s!=null?(s>=0?'+':'')+s.toFixed(1)+'%':'—'}</td>
+        <td class="${p!=null&&p>=0?'pos':'neg'}">${p!=null?(p>=0?'+':'')+p.toFixed(1)+'%':'—'}</td>
+        <td class="${st!=null&&st>=0?'pos':'neg'}">${st!=null?(st>=0?'+':'')+st.toFixed(1)+'%':'—'}</td>
+        <td>${roe!=null?roe.toFixed(1)+'%':'—'}</td></tr>`;});
+  }catch(e){hideLoad();showErr('Error: '+e.message);console.error(e);}
 }
 
 const tabInits={
