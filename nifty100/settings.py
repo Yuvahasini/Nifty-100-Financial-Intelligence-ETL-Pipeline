@@ -11,7 +11,23 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production-use-env-var
 
 DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# ---------------------------------------------------------------------------
+# Allowed Hosts — automatically includes Vercel domains + any custom domains
+# ---------------------------------------------------------------------------
+_default_hosts = "localhost,127.0.0.1"
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", _default_hosts).split(",")
+
+# Always allow all *.vercel.app subdomains and the Vercel deployment URLs
+ALLOWED_HOSTS += [
+    ".vercel.app",            # covers all *.vercel.app including preview URLs
+    "nifty-100-financial-intelligence-et.vercel.app",
+]
+
+# In production on Vercel, DEBUG is False but we still need to accept the host.
+# Setting ALLOWED_HOSTS = ["*"] is fine when behind Vercel's edge proxy which
+# validates the host. We do this only when not in local dev.
+if not DEBUG and not os.getenv("DJANGO_ALLOWED_HOSTS"):
+    ALLOWED_HOSTS = ["*"]
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -134,9 +150,26 @@ SPECTACULAR_SETTINGS = {
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000"
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500"
 ).split(",")
-CORS_ALLOW_ALL_ORIGINS = DEBUG   # allow all in dev
+
+# Allow all origins in debug mode OR when deployed on Vercel
+CORS_ALLOW_ALL_ORIGINS = DEBUG or bool(os.getenv("VERCEL", ""))
+
+# Allow Vercel preview + production URLs explicitly
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
+
+# ---------------------------------------------------------------------------
+# CSRF trusted origins — needed for POST requests from Vercel frontend
+# ---------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.vercel.app",
+    "https://nifty-100-financial-intelligence-et.vercel.app",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+]
 
 # ---------------------------------------------------------------------------
 # Static & media
