@@ -12,25 +12,30 @@ from drf_spectacular.views import (
 from . import views
 
 urlpatterns = [
-    # ── Company endpoints ─────────────────────────────────────────────────
-    path("companies/",                   views.CompanyListView.as_view(),   name="company-list"),
-    path("companies/<str:symbol>/",      views.CompanyDetailView.as_view(), name="company-detail"),
-    path("companies/<str:symbol>/full/", views.CompanyFullView.as_view(),   name="company-full"),
+    # ── Company endpoints ──────────────────────────────────────────────────
+    path("companies/",                           views.CompanyListView.as_view(),   name="company-list"),
+    path("companies/<str:symbol>/",              views.CompanyDetailView.as_view(), name="company-detail"),
+    path("companies/<str:symbol>/full/",         views.CompanyFullView.as_view(),   name="company-full"),
 
-    # ── Financial data endpoints ──────────────────────────────────────────
+    # ── Financial data endpoints ───────────────────────────────────────────
     path("companies/<str:symbol>/profit-loss/",   views.ProfitLossView.as_view(),   name="profit-loss"),
     path("companies/<str:symbol>/balance-sheet/", views.BalanceSheetView.as_view(), name="balance-sheet"),
     path("companies/<str:symbol>/cash-flow/",     views.CashFlowView.as_view(),     name="cash-flow"),
     path("companies/<str:symbol>/analysis/",      views.AnalysisView.as_view(),     name="analysis"),
     path("companies/<str:symbol>/ml-score/",      views.MlScoreView.as_view(),      name="ml-score"),
 
-    # ── Aggregation / comparison endpoints ───────────────────────────────
+    # ── NEW: Peers + anomaly per company ──────────────────────────────────
+    path("companies/<str:symbol>/peers/",         views.PeerView.as_view(),         name="peers"),
+    path("companies/<str:symbol>/anomalies/",     views.AnomalyFlagView.as_view(),  name="anomalies"),
+
+    # ── Aggregation / comparison endpoints ────────────────────────────────
     path("leaderboard/",    views.leaderboard,       name="leaderboard"),
     path("sector-summary/", views.sector_summary,    name="sector-summary"),
     path("compare/",        views.compare_companies, name="compare"),
+    path("anomalies/",      views.all_anomalies,     name="all-anomalies"),
 
-    # ── API docs ──────────────────────────────────────────────────────────
-    path("schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("docs/",   SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("redoc/",  SpectacularRedocView.as_view(url_name="schema"),   name="redoc"),
+    # ── API docs ───────────────────────────────────────────────────────────
+    path("schema/", SpectacularAPIView.as_view(),                              name="schema"),
+    path("docs/",   SpectacularSwaggerView.as_view(url_name="schema"),         name="swagger-ui"),
+    path("redoc/",  SpectacularRedocView.as_view(url_name="schema"),           name="redoc"),
 ]
