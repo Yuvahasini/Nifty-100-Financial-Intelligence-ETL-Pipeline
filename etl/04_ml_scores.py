@@ -205,10 +205,10 @@ WEIGHTS = {
 }
 
 HEALTH_BANDS = [
-    (80, "EXCELLENT"),
-    (60, "GOOD"),
-    (40, "AVERAGE"),
-    (20, "WEAK"),
+    (85, "EXCELLENT"),
+    (70, "GOOD"),
+    (50, "AVERAGE"),
+    (35, "WEAK"),
     (0,  "POOR"),
 ]
 
@@ -240,50 +240,164 @@ def combine_scores(*dfs) -> pd.DataFrame:
 # Auto-generate pros & cons from scores
 # ---------------------------------------------------------------------------
 
-def generate_pros_cons(scores: pd.DataFrame) -> pd.DataFrame:
+def generate_pros_cons(scores: pd.DataFrame, raw: dict | None = None) -> pd.DataFrame:
+    """
+    Rule-based pros & cons engine — implements all 13 rules from spec §7.2.
+    `raw` is a dict of DataFrames keyed by table name (pl, bs, cf, an).
+    Falls back to score-only rules when raw data is not supplied.
+    """
     rows = []
+
+    # Pre-compute per-company raw metrics when available
+    pl_data = raw.get("pl") if raw else None
+    bs_data = raw.get("bs") if raw else None
+    cf_data = raw.get("cf") if raw else None
+    an_data = raw.get("an") if raw else None
+
+    def pro(sym, text, conf=0.8):
+        rows.append({"symbol": sym, "is_pro": True, "text": text,
+                     "source": "ML", "confidence": round(conf, 3)})
+
+    def con(sym, text, conf=0.8):
+        rows.append({"symbol": sym, "is_pro": False, "text": text,
+                     "source": "ML", "confidence": round(conf, 3)})
+
     for _, r in scores.iterrows():
         sym = r["symbol"]
 
-        # Pros
-        if r["profitability_score"] >= 70:
-            rows.append({"symbol": sym, "is_pro": True,
-                         "text": f"Strong profitability with score {r['profitability_score']:.0f}/100",
-                         "source": "ML", "confidence": r["profitability_score"] / 100})
-        if r["growth_score"] >= 65:
-            rows.append({"symbol": sym, "is_pro": True,
-                         "text": f"Consistent revenue and profit growth (score {r['growth_score']:.0f}/100)",
-                         "source": "ML", "confidence": r["growth_score"] / 100})
-        if r["cashflow_score"] >= 65:
-            rows.append({"symbol": sym, "is_pro": True,
-                         "text": f"Healthy free cash flow generation (score {r['cashflow_score']:.0f}/100)",
-                         "source": "ML", "confidence": r["cashflow_score"] / 100})
-        if r["leverage_score"] >= 70:
-            rows.append({"symbol": sym, "is_pro": True,
-                         "text": "Low debt burden with strong equity base",
-                         "source": "ML", "confidence": r["leverage_score"] / 100})
-        if r["dividend_score"] >= 60:
-            rows.append({"symbol": sym, "is_pro": True,
-                         "text": "Consistent dividend history rewarding shareholders",
-                         "source": "ML", "confidence": r["dividend_score"] / 100})
+        # ------------------------------------------------------------------ #
+        # Raw-data rules (spec §7.2) — run when warehouse data is available  #
+        # ------------------------------------------------------------------ #
+        if pl_data is not None:
+            pl_sym = pl_data[pl_data["symbol"] == sym].sort_values("fiscal_year")
+            bs_sym = bs_data[bs_data["symbol"] == sym].sort_values("fiscal_year") if bs_data is not None else pd.DataFrame()
+            cf_sym = cf_data[cf_data["symbol"] == sym].sort_values("fiscal_year") if cf_data is not None else pd.DataFrame()
+            an_sym = an_data[an_data["symbol"] == sym] if an_data is not None else pd.DataFrame()
 
-        # Cons
-        if r["profitability_score"] < 35:
-            rows.append({"symbol": sym, "is_pro": False,
-                         "text": f"Below-average profitability (score {r['profitability_score']:.0f}/100)",
-                         "source": "ML", "confidence": (100 - r["profitability_score"]) / 100})
-        if r["leverage_score"] < 35:
-            rows.append({"symbol": sym, "is_pro": False,
-                         "text": "High debt levels relative to equity — watch interest costs",
-                         "source": "ML", "confidence": (100 - r["leverage_score"]) / 100})
-        if r["cashflow_score"] < 35:
-            rows.append({"symbol": sym, "is_pro": False,
-                         "text": "Weak free cash flow — earnings may not be converting to cash",
-                         "source": "ML", "confidence": (100 - r["cashflow_score"]) / 100})
-        if r["growth_score"] < 30:
-            rows.append({"symbol": sym, "is_pro": False,
-                         "text": "Sluggish revenue growth over recent periods",
-                         "source": "ML", "confidence": (100 - r["growth_score"]) / 100})
+            # --- PROS ---
+
+            # P1: D/E < 0.1 → "Company is almost debt free."
+            if not bs_sym.empty:
+                latest_de = bs_sym["debt_to_equity"].dropna().iloc[-1] if bs_sym["debt_to_equity"].dropna().shape[0] else None
+                if latest_de is not None and latest_de < 0.1:
+                    pro(sym, "Company is almost debt free.", conf=0.95)
+
+            # P2: 3Y ROE > 20%
+            if not an_sym.empty:
+                roe_3y_rows = an_sym[an_sym["period"] == "3Y"]["roe_pct"].dropna()
+                if not roe_3y_rows.empty and roe_3y_rows.values[0] > 20:
+                    val = round(roe_3y_rows.values[0], 1)
+                    pro(sym, f"Company has a good return on equity (ROE) track record: 3 Years ROE {val}%", conf=0.9)
+
+            # P3: Dividend payout consistently > 30% for 5 years
+            if not pl_sym.empty:
+                recent5 = pl_sym.tail(5)
+                if len(recent5) >= 5:
+                    div_vals = recent5["dividend_payout_pct"].dropna()
+                    if len(div_vals) >= 5 and (div_vals > 30).all():
+                        avg_div = round(div_vals.mean(), 1)
+                        pro(sym, f"Company has been maintaining a healthy dividend payout of {avg_div}%", conf=0.9)
+
+            # P4: 10Y sales CAGR > 15%
+            if not an_sym.empty:
+                cagr_10y = an_sym[an_sym["period"] == "10Y"]["compounded_sales_growth_pct"].dropna()
+                if not cagr_10y.empty and cagr_10y.values[0] > 15:
+                    val = round(cagr_10y.values[0], 1)
+                    pro(sym, f"Strong long-term revenue growth of {val}% CAGR over 10 years", conf=0.9)
+
+            # P5: OPM improved every year for 3 consecutive years
+            if not pl_sym.empty and "opm_pct" in pl_sym.columns:
+                opm_vals = pl_sym["opm_pct"].dropna().values
+                if len(opm_vals) >= 3:
+                    last3 = opm_vals[-3:]
+                    if last3[0] < last3[1] < last3[2]:
+                        pro(sym, "Improving operating margins consistently for 3 years", conf=0.85)
+
+            # P6: Operating cash flow > net profit for 3 consecutive years
+            if not pl_sym.empty and not cf_sym.empty:
+                merged_cf = pl_sym[["fiscal_year","net_profit"]].merge(
+                    cf_sym[["fiscal_year","operating_activity"]], on="fiscal_year", how="inner")
+                if len(merged_cf) >= 3:
+                    last3 = merged_cf.tail(3)
+                    if (last3["operating_activity"] > last3["net_profit"]).all():
+                        pro(sym, "Strong cash conversion — OCF exceeds reported profits", conf=0.85)
+
+            # P7: 3Y profit CAGR > 15%
+            if not an_sym.empty:
+                pcagr = an_sym[an_sym["period"] == "3Y"]["compounded_profit_growth_pct"].dropna()
+                if not pcagr.empty and pcagr.values[0] > 15:
+                    val = round(pcagr.values[0], 1)
+                    pro(sym, f"Profit growth accelerated significantly at {val}% CAGR", conf=0.85)
+
+            # --- CONS ---
+
+            # C1: 5Y sales CAGR < 10%
+            if not an_sym.empty:
+                cagr_5y = an_sym[an_sym["period"] == "5Y"]["compounded_sales_growth_pct"].dropna()
+                if not cagr_5y.empty and cagr_5y.values[0] < 10:
+                    con(sym, "Below-average sales growth over past five years", conf=0.85)
+
+            # C2: Latest borrowings > previous borrowings × 1.5
+            if not bs_sym.empty and len(bs_sym) >= 2:
+                borr = bs_sym["borrowings"].dropna().values
+                if len(borr) >= 2 and borr[-2] > 0 and borr[-1] > borr[-2] * 1.5:
+                    con(sym, "Borrowings have increased significantly in the recent year", conf=0.9)
+
+            # C3: OPM declining for 3 consecutive years
+            if not pl_sym.empty and "opm_pct" in pl_sym.columns:
+                opm_vals = pl_sym["opm_pct"].dropna().values
+                if len(opm_vals) >= 3:
+                    last3 = opm_vals[-3:]
+                    if last3[0] > last3[1] > last3[2]:
+                        con(sym, "Operating margins have been declining for three consecutive years", conf=0.85)
+
+            # C4: D/E > 1.5
+            if not bs_sym.empty:
+                latest_de = bs_sym["debt_to_equity"].dropna().iloc[-1] if bs_sym["debt_to_equity"].dropna().shape[0] else None
+                if latest_de is not None and latest_de > 1.5:
+                    con(sym, "Stock carries high debt — leverage levels require monitoring", conf=0.9)
+
+            # C5: Net profit > operating cash flow by > 30% (earnings quality)
+            if not pl_sym.empty and not cf_sym.empty:
+                merged_cf = pl_sym[["fiscal_year","net_profit"]].merge(
+                    cf_sym[["fiscal_year","operating_activity"]], on="fiscal_year", how="inner")
+                if not merged_cf.empty:
+                    last = merged_cf.iloc[-1]
+                    np_ = last["net_profit"]
+                    ocf = last["operating_activity"]
+                    if np_ > 0 and (np_ - ocf) > 0.3 * np_:
+                        con(sym, "Earnings quality concern — reported profits exceed actual cash generation", conf=0.8)
+
+            # C6: Interest coverage < 2
+            if not pl_sym.empty and "interest_coverage" in pl_sym.columns:
+                ic_vals = pl_sym["interest_coverage"].dropna()
+                if not ic_vals.empty and ic_vals.iloc[-1] < 2:
+                    con(sym, "Low interest coverage ratio — debt repayment risk", conf=0.9)
+
+        # ------------------------------------------------------------------ #
+        # Score-level fallback rules (used when raw data not available)      #
+        # ------------------------------------------------------------------ #
+        else:
+            if r["leverage_score"] >= 80:
+                pro(sym, "Company is almost debt free.", conf=r["leverage_score"] / 100)
+            if r["growth_score"] >= 70:
+                pro(sym, f"Consistent revenue and profit growth (score {r['growth_score']:.0f}/100)",
+                    conf=r["growth_score"] / 100)
+            if r["cashflow_score"] >= 70:
+                pro(sym, "Strong cash conversion — OCF exceeds reported profits",
+                    conf=r["cashflow_score"] / 100)
+            if r["dividend_score"] >= 65:
+                pro(sym, "Company has been maintaining a healthy dividend payout",
+                    conf=r["dividend_score"] / 100)
+            if r["leverage_score"] < 35:
+                con(sym, "Stock carries high debt — leverage levels require monitoring",
+                    conf=(100 - r["leverage_score"]) / 100)
+            if r["cashflow_score"] < 35:
+                con(sym, "Earnings quality concern — reported profits exceed actual cash generation",
+                    conf=(100 - r["cashflow_score"]) / 100)
+            if r["growth_score"] < 30:
+                con(sym, "Below-average sales growth over past five years",
+                    conf=(100 - r["growth_score"]) / 100)
 
     return pd.DataFrame(rows)
 
