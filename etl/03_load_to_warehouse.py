@@ -254,6 +254,38 @@ CREATE TABLE IF NOT EXISTS fact_pros_cons (
     created_at  TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS fact_anomaly_flags (
+    id          SERIAL PRIMARY KEY,
+    symbol      VARCHAR(20) REFERENCES dim_company(symbol),
+    fiscal_year INT,
+    metric      VARCHAR(50),
+    z_score     NUMERIC(8,3),
+    direction   VARCHAR(10),
+    method      VARCHAR(30),
+    flagged_at  DATE,
+    UNIQUE (symbol, fiscal_year, metric, method)
+);
+
+CREATE TABLE IF NOT EXISTS fact_peer_mapping (
+    id               SERIAL PRIMARY KEY,
+    symbol           VARCHAR(20) REFERENCES dim_company(symbol),
+    peer_symbol      VARCHAR(20) REFERENCES dim_company(symbol),
+    peer_rank        INT,
+    similarity_score NUMERIC(8,4),
+    computed_at      DATE DEFAULT CURRENT_DATE,
+    UNIQUE (symbol, peer_rank)
+);
+
+CREATE TABLE IF NOT EXISTS fact_trend_labels (
+    id          SERIAL PRIMARY KEY,
+    symbol      VARCHAR(20) REFERENCES dim_company(symbol),
+    metric      VARCHAR(50),
+    slope       NUMERIC(12,4),
+    slope_pct   NUMERIC(8,4),
+    trend       VARCHAR(10),
+    computed_at DATE
+);
+
 CREATE TABLE IF NOT EXISTS fact_documents (
     id                  SERIAL PRIMARY KEY,
     symbol              VARCHAR(20) REFERENCES dim_company(symbol),
@@ -316,11 +348,12 @@ def load_dim_year(engine):
     df = safe_bool(df, ["is_ttm", "is_half_year"])
 
     sql = text("""
-        INSERT INTO dim_year (year_id, year_label, fiscal_year, sort_order, is_ttm, is_half_year)
-        VALUES (:year_id, :year_label, :fiscal_year, :sort_order, :is_ttm, :is_half_year)
+        INSERT INTO dim_year (year_id, year_label, fiscal_year, year_date, sort_order, is_ttm, is_half_year)
+        VALUES (:year_id, :year_label, :fiscal_year, MAKE_DATE(:fiscal_year, 3, 31), :sort_order, :is_ttm, :is_half_year)
         ON CONFLICT (year_id) DO UPDATE SET
             year_label   = EXCLUDED.year_label,
             fiscal_year  = EXCLUDED.fiscal_year,
+            year_date    = EXCLUDED.year_date,
             sort_order   = EXCLUDED.sort_order,
             is_ttm       = EXCLUDED.is_ttm,
             is_half_year = EXCLUDED.is_half_year
