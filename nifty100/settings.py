@@ -11,21 +11,14 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production-use-env-var
 
 DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
 
-# ---------------------------------------------------------------------------
-# Allowed Hosts — automatically includes Vercel domains + any custom domains
-# ---------------------------------------------------------------------------
 _default_hosts = "localhost,127.0.0.1"
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", _default_hosts).split(",")
 
-# Always allow all *.vercel.app subdomains and the Vercel deployment URLs
 ALLOWED_HOSTS += [
-    ".vercel.app",            # covers all *.vercel.app including preview URLs
+    ".vercel.app",
     "nifty-100-financial-intelligence-et.vercel.app",
 ]
 
-# In production on Vercel, DEBUG is False but we still need to accept the host.
-# Setting ALLOWED_HOSTS = ["*"] is fine when behind Vercel's edge proxy which
-# validates the host. We do this only when not in local dev.
 if not DEBUG and not os.getenv("DJANGO_ALLOWED_HOSTS"):
     ALLOWED_HOSTS = ["*"]
 
@@ -43,6 +36,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "drf_spectacular",
+    "django_celery_beat",
+    "django_celery_results",
     # Project
     "intelligence",
 ]
@@ -79,7 +74,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "nifty100.wsgi.application"
 
 # ---------------------------------------------------------------------------
-# Database — points to the same PostgreSQL warehouse
+# Database
 # ---------------------------------------------------------------------------
 DATABASES = {
     "default": {
@@ -94,23 +89,18 @@ DATABASES = {
 }
 
 # ---------------------------------------------------------------------------
-# Celery — background ETL refresh
+# Celery
 # ---------------------------------------------------------------------------
-CELERY_BROKER_URL        = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_BROKER_URL        = os.getenv("CELERY_BROKER_URL",     "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND    = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 CELERY_TIMEZONE          = "Asia/Kolkata"
 CELERY_TASK_SERIALIZER   = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT    = ["json"]
+CELERY_RESULT_EXTENDED   = True
 
-from celery.schedules import crontab
-CELERY_BEAT_SCHEDULE = {
-    # Re-run ML scoring every day at 6:00 AM IST
-    "daily-ml-scoring": {
-        "task":     "intelligence.tasks.run_ml_scoring",
-        "schedule": crontab(hour=6, minute=0),
-    },
-}
+# Use Django DB as beat scheduler backend
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # ---------------------------------------------------------------------------
 # Django REST Framework
@@ -123,16 +113,6 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
-    # Throttling disabled in development — Redis not required locally.
-    # Uncomment below when deploying to production with Redis running.
-    # "DEFAULT_THROTTLE_CLASSES": [
-    #     "rest_framework.throttling.AnonRateThrottle",
-    #     "rest_framework.throttling.UserRateThrottle",
-    # ],
-    # "DEFAULT_THROTTLE_RATES": {
-    #     "anon": "100/hour",
-    #     "user": "1000/hour",
-    # },
 }
 
 # ---------------------------------------------------------------------------
@@ -153,17 +133,12 @@ CORS_ALLOWED_ORIGINS = os.getenv(
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500"
 ).split(",")
 
-# Allow all origins in debug mode OR when deployed on Vercel
 CORS_ALLOW_ALL_ORIGINS = DEBUG or bool(os.getenv("VERCEL", ""))
 
-# Allow Vercel preview + production URLs explicitly
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
 ]
 
-# ---------------------------------------------------------------------------
-# CSRF trusted origins — needed for POST requests from Vercel frontend
-# ---------------------------------------------------------------------------
 CSRF_TRUSTED_ORIGINS = [
     "https://*.vercel.app",
     "https://nifty-100-financial-intelligence-et.vercel.app",
@@ -183,8 +158,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
 # Caching
-# Use local memory cache in development (no Redis needed).
-# Switch to RedisCache in production by setting REDIS_URL env variable.
 # ---------------------------------------------------------------------------
 REDIS_URL = os.getenv("REDIS_URL", "")
 
