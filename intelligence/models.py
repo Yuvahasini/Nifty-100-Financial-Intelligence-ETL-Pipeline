@@ -33,6 +33,8 @@ class DimYear(models.Model):
     year_id      = models.IntegerField(primary_key=True)
     year_label   = models.CharField(max_length=20, unique=True)
     fiscal_year  = models.IntegerField(null=True)
+    # year_date: March 31 of fiscal_year — required by Power BI DATEADD / LASTDATE
+    year_date    = models.DateField(null=True)
     sort_order   = models.IntegerField(null=True)
     is_ttm       = models.BooleanField(default=False)
     is_half_year = models.BooleanField(default=False)
@@ -73,24 +75,24 @@ class DimHealthLabel(models.Model):
 
 
 class FactProfitLoss(models.Model):
-    id                   = models.AutoField(primary_key=True)
-    symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
-    sales                = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    expenses             = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    operating_profit     = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    opm_pct              = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
-    other_income         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    interest             = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    depreciation         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    profit_before_tax    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    tax_pct              = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
-    net_profit           = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    eps                  = models.DecimalField(max_digits=10, decimal_places=2, null=True)
-    dividend_payout_pct  = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
-    net_profit_margin_pct = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    expense_ratio_pct    = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
-    interest_coverage    = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    id                    = models.AutoField(primary_key=True)
+    symbol                = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    year                  = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
+    sales                 = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    expenses              = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    operating_profit      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    opm_pct               = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
+    other_income          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    interest              = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    depreciation          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    profit_before_tax     = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    tax_pct               = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
+    net_profit            = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    eps                   = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    dividend_payout_pct   = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
+    net_profit_margin_pct = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
+    expense_ratio_pct     = models.DecimalField(max_digits=8,  decimal_places=2, null=True)
+    interest_coverage     = models.DecimalField(max_digits=10, decimal_places=2, null=True)
 
     class Meta:
         managed = False
@@ -102,21 +104,21 @@ class FactProfitLoss(models.Model):
 
 
 class FactBalanceSheet(models.Model):
-    id                   = models.AutoField(primary_key=True)
-    symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
-    equity_capital       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    reserves             = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    borrowings           = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    other_liabilities    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    total_liabilities    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    fixed_assets         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    cwip                 = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    investments          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    other_asset          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    total_assets         = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    debt_to_equity       = models.DecimalField(max_digits=10, decimal_places=4, null=True)
-    equity_ratio         = models.DecimalField(max_digits=10, decimal_places=4, null=True)
+    id                = models.AutoField(primary_key=True)
+    symbol            = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    year              = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
+    equity_capital    = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    reserves          = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    borrowings        = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    other_liabilities = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    total_liabilities = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    fixed_assets      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    cwip              = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    investments       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    other_asset       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    total_assets      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    debt_to_equity    = models.DecimalField(max_digits=10, decimal_places=4, null=True)
+    equity_ratio      = models.DecimalField(max_digits=10, decimal_places=4, null=True)
 
     class Meta:
         managed = False
@@ -125,14 +127,14 @@ class FactBalanceSheet(models.Model):
 
 
 class FactCashFlow(models.Model):
-    id                   = models.AutoField(primary_key=True)
-    symbol               = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    year                 = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
-    operating_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    investing_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    financing_activity   = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    net_cash_flow        = models.DecimalField(max_digits=18, decimal_places=2, null=True)
-    free_cash_flow       = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    id                 = models.AutoField(primary_key=True)
+    symbol             = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    year               = models.ForeignKey(DimYear, db_column="year_id", on_delete=models.CASCADE)
+    operating_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    investing_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    financing_activity = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    net_cash_flow      = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    free_cash_flow     = models.DecimalField(max_digits=18, decimal_places=2, null=True)
 
     class Meta:
         managed = False
@@ -156,14 +158,9 @@ class FactAnalysis(models.Model):
 
 
 class FactMlScore(models.Model):
-    # symbol is the primary key — one row per company (latest score only)
-    # computed_at is stored but not used as PK to avoid Django composite PK issues
     symbol              = models.OneToOneField(
-                            DimCompany,
-                            db_column="symbol",
-                            on_delete=models.CASCADE,
-                            primary_key=True,
-                          )
+                            DimCompany, db_column="symbol",
+                            on_delete=models.CASCADE, primary_key=True)
     computed_at         = models.DateTimeField()
     overall_score       = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     profitability_score = models.DecimalField(max_digits=6, decimal_places=2, null=True)
@@ -183,12 +180,10 @@ class FactMlScore(models.Model):
 
 
 class FactProsCons(models.Model):
-    id         = models.AutoField(primary_key=True)
-    symbol     = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
-    is_pro     = models.BooleanField(null=True)
-    text       = models.TextField(null=True)
-    source     = models.CharField(max_length=10, default="MANUAL")
-    created_at = models.DateTimeField(auto_now_add=True)
+    id     = models.AutoField(primary_key=True)
+    symbol = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    is_pro = models.BooleanField(null=True)
+    text   = models.TextField(null=True)
 
     class Meta:
         managed = False
@@ -204,3 +199,52 @@ class FactDocument(models.Model):
     class Meta:
         managed = False
         db_table = "fact_documents"
+
+
+# ---------------------------------------------------------------------------
+# NEW: Anomaly flags table — populated by notebooks/03 and detect_anomalies task
+# ---------------------------------------------------------------------------
+
+class FactAnomalyFlag(models.Model):
+    id          = models.AutoField(primary_key=True)
+    symbol      = models.ForeignKey(DimCompany, db_column="symbol", on_delete=models.CASCADE)
+    fiscal_year = models.IntegerField(null=True, blank=True)
+    metric      = models.CharField(max_length=50)
+    z_score     = models.DecimalField(max_digits=8, decimal_places=3, null=True)
+    direction   = models.CharField(max_length=10, null=True)   # "spike" | "drop" | "anomaly"
+    method      = models.CharField(max_length=30, default="zscore")  # "zscore" | "isolation_forest"
+    flagged_at  = models.DateField(null=True)
+
+    class Meta:
+        managed = False
+        db_table = "fact_anomaly_flags"
+        indexes = [
+            models.Index(fields=["symbol", "fiscal_year"]),
+            models.Index(fields=["method"]),
+        ]
+
+    def __str__(self):
+        return f"{self.symbol_id} {self.fiscal_year} — {self.metric} ({self.method})"
+
+
+# ---------------------------------------------------------------------------
+# NEW: Peer mapping table — populated by notebooks/05
+# ---------------------------------------------------------------------------
+
+class FactPeerMapping(models.Model):
+    id               = models.AutoField(primary_key=True)
+    symbol           = models.ForeignKey(DimCompany, db_column="symbol",
+                                         on_delete=models.CASCADE, related_name="peer_mappings")
+    peer_symbol      = models.ForeignKey(DimCompany, db_column="peer_symbol",
+                                         on_delete=models.CASCADE, related_name="peer_of")
+    peer_rank        = models.IntegerField()
+    similarity_score = models.DecimalField(max_digits=6, decimal_places=4, null=True)
+    computed_at      = models.DateField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "fact_peer_mapping"
+        unique_together = [("symbol", "peer_rank")]
+
+    def __str__(self):
+        return f"{self.symbol_id} → Peer #{self.peer_rank}: {self.peer_symbol_id}"
