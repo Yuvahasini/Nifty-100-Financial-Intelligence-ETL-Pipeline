@@ -334,6 +334,7 @@ def main():
     # Save sector mapping separately
     sector_df = co[["symbol", "sector"]].copy()
     sector_df.to_csv(CLEAN_DIR / "sector_mapping.csv", index=False)
+    sector_df.to_csv(Path("data") / "sector_mapping.csv", index=False)
     print(f"  sector_mapping     → {len(sector_df)} rows")
 
     # ── Analysis ────────────────────────────────────────────────────────────
